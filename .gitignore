@@ -1,3 +1,5 @@
 node_modules/
 bench-results.json
 .DS_Store
+drift-results.json
+scale-results.json

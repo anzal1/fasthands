@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Noise</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .header-card {
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 1.5rem;
+      color: #333;
+    }
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+      color: #333;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-family: inherit;
+    }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #0066cc;
+      box-shadow: 0 0 0 2px rgba(0,102,204,0.1);
+    }
+    button {
+      padding: 0.75rem 1.25rem;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #0052a3;
+    }
+    #noiseResult {
+      margin-top: 1rem;
+      color: #059669;
+      font-weight: 500;
+    }
+    #noiseResult.error {
+      color: #dc2626;
+    }
+    .fold-spacer {
+      height: 900px;
+    }
+    .distractors {
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .distractors h2 {
+      font-size: 1.1rem;
+      color: #666;
+      margin-bottom: 1rem;
+    }
+    .distractor-row {
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #eee;
+    }
+    .distractor-row a,
+    .distractor-row button {
+      font-size: 0.9rem;
+    }
+    .distractor-row label {
+      display: inline;
+      font-weight: normal;
+      margin-left: 0.4rem;
+    }
+    .distractor-table-wrap {
+      margin: 1rem 0;
+      padding: 0.75rem;
+      border: 1px solid #eee;
+      border-radius: 4px;
+    }
+    .table-caption {
+      font-size: 0.85rem;
+      color: #666;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+    table.distractor-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    table.distractor-table td {
+      padding: 0.35rem 0.5rem;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    table.distractor-table label {
+      display: inline;
+      font-weight: normal;
+      margin-left: 0.3rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header-card">
+      <form id="noiseForm">
+        <h1>Noise fixture</h1>
+
+        <div class="form-group">
+          <label for="alpha">Alpha</label>
+          <input type="text" id="alpha" name="alpha">
+        </div>
+
+        <div class="form-group">
+          <label for="beta">Beta</label>
+          <input type="text" id="beta" name="beta">
+        </div>
+
+        <div class="form-group">
+          <label for="gamma">Gamma</label>
+          <input type="text" id="gamma" name="gamma">
+        </div>
+
+        <button type="submit">Submit noise</button>
+        <div id="noiseResult" role="status"></div>
+      </form>
+    </div>
+
+    <div class="fold-spacer" aria-hidden="true"></div>
+
+    <div class="distractors">
+      <h2>Distractors</h2>
+      <div id="distractorList"></div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var form = document.getElementById('noiseForm');
+      var resultEl = document.getElementById('noiseResult');
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var alpha = document.getElementById('alpha').value.trim();
+        var beta = document.getElementById('beta').value.trim();
+        var gamma = document.getElementById('gamma').value.trim();
+
+        if (alpha && beta && gamma) {
+          resultEl.className = '';
+          resultEl.innerHTML = '';
+          var h1 = document.createElement('h1');
+          h1.textContent = 'Noise submitted';
+          resultEl.appendChild(h1);
+        } else {
+          resultEl.className = 'error';
+          resultEl.textContent = 'Alpha, Beta, and Gamma are all required.';
+        }
+      });
+
+      // ---------------------------------------------------------------
+      // Distractor generation. Deterministic: everything below is derived
+      // from index arithmetic only (no Math.random), so a given ?n=N always
+      // renders byte-identical content across runs. Four element kinds
+      // cycle round-robin: link, button, labeled checkbox, small table
+      // (each table row itself carries a labeled checkbox, so tables are
+      // also part of the "interactive distractor" mix, not pure filler).
+      // ---------------------------------------------------------------
+      var params = new URLSearchParams(location.search);
+      var n = parseInt(params.get('n'), 10);
+      if (!Number.isFinite(n) || n <= 0) n = 200;
+
+      var list = document.getElementById('distractorList');
+      var frag = document.createDocumentFragment();
+
+      function textCell(td, text) {
+        td.appendChild(document.createTextNode(text));
+      }
+
+      for (var i = 0; i < n; i++) {
+        var kind = i % 4;
+
+        if (kind === 0) {
+          var row = document.createElement('div');
+          row.className = 'distractor-row';
+          var a = document.createElement('a');
+          a.href = '#w' + i;
+          a.textContent = 'Widget link ' + i;
+          row.appendChild(a);
+          frag.appendChild(row);
+        } else if (kind === 1) {
+          var row2 = document.createElement('div');
+          row2.className = 'distractor-row';
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = 'Widget action ' + i;
+          row2.appendChild(btn);
+          frag.appendChild(row2);
+        } else if (kind === 2) {
+          var row3 = document.createElement('div');
+          row3.className = 'distractor-row';
+          var chk = document.createElement('input');
+          chk.type = 'checkbox';
+          chk.id = 'chk' + i;
+          var lbl = document.createElement('label');
+          lbl.htmlFor = 'chk' + i;
+          lbl.textContent = 'Widget option ' + i;
+          row3.appendChild(chk);
+          row3.appendChild(lbl);
+          frag.appendChild(row3);
+        } else {
+          var wrap = document.createElement('div');
+          wrap.className = 'distractor-table-wrap';
+          var caption = document.createElement('div');
+          caption.className = 'table-caption';
+          caption.textContent = 'Table ' + i;
+          wrap.appendChild(caption);
+
+          var table = document.createElement('table');
+          table.className = 'distractor-table';
+          for (var r = 0; r < 3; r++) {
+            var rowIdx = i * 3 + r;
+            var tr = document.createElement('tr');
+
+            var tdChk = document.createElement('td');
+            var rowChk = document.createElement('input');
+            rowChk.type = 'checkbox';
+            rowChk.id = 'trow' + rowIdx;
+            var rowLbl = document.createElement('label');
+            rowLbl.htmlFor = 'trow' + rowIdx;
+            rowLbl.textContent = 'Row ' + rowIdx;
+            tdChk.appendChild(rowChk);
+            tdChk.appendChild(rowLbl);
+
+            var tdA = document.createElement('td');
+            textCell(tdA, 'val-' + ((rowIdx * 7) % 97));
+
+            var tdB = document.createElement('td');
+            textCell(tdB, 'code-' + ((rowIdx * 13) % 89));
+
+            tr.appendChild(tdChk);
+            tr.appendChild(tdA);
+            tr.appendChild(tdB);
+            table.appendChild(tr);
+          }
+          wrap.appendChild(table);
+          frag.appendChild(wrap);
+        }
+      }
+
+      list.appendChild(frag);
+    })();
+  </script>
+</body>
+</html>

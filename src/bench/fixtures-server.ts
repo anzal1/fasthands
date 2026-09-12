@@ -19,6 +19,8 @@ const ROUTES: Record<string, string> = {
   "/settings": "settings.html",
   "/list": "list.html",
   "/signup": "signup.html",
+  "/noise": "noise.html",
+  "/drift": "drift.html",
 };
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {

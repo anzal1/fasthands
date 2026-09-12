@@ -55,14 +55,16 @@ interface CliArgs {
   provider?: string;
   model?: string;
   baseUrl?: string;
+  repeat: number;
 }
 
 function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = {};
+  const args: CliArgs = { repeat: 1 };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--provider") args.provider = argv[++i];
     else if (argv[i] === "--model") args.model = argv[++i];
     else if (argv[i] === "--base-url") args.baseUrl = argv[++i];
+    else if (argv[i] === "--repeat") args.repeat = Math.max(1, Number(argv[++i]) || 1);
   }
   return args;
 }
@@ -192,6 +194,70 @@ async function runOne(
   return result;
 }
 
+// ---------- statistics across repeats ----------
+
+interface CellStats {
+  taskId: string;
+  style: LoopStyle;
+  reps: number;
+  successes: number;
+  turns: { mean: number; sd: number };
+  tokens: { mean: number; sd: number };
+  wallMs: { mean: number; sd: number };
+}
+
+function meanSd(values: number[]): { mean: number; sd: number } {
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+  return { mean, sd: Math.sqrt(variance) };
+}
+
+function aggregate(results: BenchResult[]): CellStats[] {
+  const cells: CellStats[] = [];
+  for (const task of tasks) {
+    for (const style of STYLES) {
+      const rows = results.filter((r) => r.taskId === task.id && r.style === style);
+      if (rows.length === 0) continue;
+      cells.push({
+        taskId: task.id,
+        style,
+        reps: rows.length,
+        successes: rows.filter((r) => r.run.success).length,
+        turns: meanSd(rows.map((r) => r.run.turns)),
+        tokens: meanSd(rows.map((r) => effectiveTokens(r))),
+        wallMs: meanSd(rows.map((r) => r.run.totalWallMs)),
+      });
+    }
+  }
+  return cells;
+}
+
+function fmtMs(v: { mean: number; sd: number }): string {
+  return v.sd > 0 ? `${v.mean.toFixed(0)}±${v.sd.toFixed(0)}` : v.mean.toFixed(0);
+}
+
+function printAggregateTable(cells: CellStats[]): void {
+  const widths = [10, 11, 8, 10, 14, 12];
+  const cols = ["task", "style", "success", "turns", "tokens", "wall ms"];
+  console.log(cols.map((c, i) => pad(c, widths[i]!)).join(" | "));
+  console.log(widths.map((w) => "-".repeat(w)).join("-+-"));
+  let lastTask = "";
+  for (const c of cells) {
+    if (lastTask && c.taskId !== lastTask) console.log("");
+    lastTask = c.taskId;
+    console.log(
+      [
+        pad(c.taskId, widths[0]!),
+        pad(c.style, widths[1]!),
+        pad(`${c.successes}/${c.reps}`, widths[2]!),
+        padLeft(fmtMs(c.turns), widths[3]!),
+        padLeft(fmtMs(c.tokens), widths[4]!),
+        padLeft(fmtMs(c.wallMs), widths[5]!),
+      ].join(" | "),
+    );
+  }
+}
+
 // ---------- reporting ----------
 
 function pad(s: string, width: number): string {
@@ -311,10 +377,13 @@ async function main(): Promise<void> {
   const results: BenchResult[] = [];
 
   try {
-    for (const task of tasks) {
-      for (const style of STYLES) {
-        const result = await runOne(browser, task.id, task.description, task.fixturePath, style, makeBrain);
-        results.push(result);
+    for (let rep = 1; rep <= args.repeat; rep++) {
+      if (args.repeat > 1) console.log(`--- repetition ${rep}/${args.repeat} ---`);
+      for (const task of tasks) {
+        for (const style of STYLES) {
+          const result = await runOne(browser, task.id, task.description, task.fixturePath, style, makeBrain);
+          results.push(result);
+        }
       }
     }
   } finally {
@@ -323,10 +392,20 @@ async function main(): Promise<void> {
   }
 
   console.log("");
-  printTable(results);
+  if (args.repeat > 1) {
+    printAggregateTable(aggregate(results));
+  } else {
+    printTable(results);
+  }
   printTotals(results);
+  if (args.repeat > 1) {
+    console.log(`(totals aggregated over ${args.repeat} repetitions per cell)`);
+  }
 
-  await writeFile(RESULTS_PATH, JSON.stringify(results, null, 2));
+  await writeFile(
+    RESULTS_PATH,
+    JSON.stringify({ repeat: args.repeat, aggregate: aggregate(results), raw: results }, null, 2),
+  );
   console.log("");
   console.log(`wrote ${results.length} results to ${RESULTS_PATH}`);
 }

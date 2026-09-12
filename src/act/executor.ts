@@ -50,18 +50,23 @@ async function settle(page: Page): Promise<void> {
   await sleep(SETTLE_DELAY_MS);
 }
 
-/** Resolve a ref via the engine and require it to still match what the model
- *  last saw. Returns the ResolvedNode on success, or an error string
- *  describing the drift/absence for the caller to record. */
+/** Resolve a ref via the engine. When `guards` is true (the default, safe
+ *  path), require it to still match what the model last saw — a hash
+ *  mismatch aborts the batch as drift. When `guards` is false (the ablation
+ *  arm, modeling a batch fired blind against a stale observation), the
+ *  mismatch is ignored and the live handle is used anyway; only a fully
+ *  vanished node fails. Returns the ResolvedNode on success, or an error
+ *  string describing the drift/absence for the caller to record. */
 async function resolveGuarded(
   engine: ObservationEngine,
   ref: string,
+  guards: boolean,
 ): Promise<{ node: ResolvedNode } | { error: string }> {
   const node = await engine.resolve(ref);
   if (node === null) {
     return { error: `drift: ref ${ref} no longer exists` };
   }
-  if (!node.stillMatches) {
+  if (guards && !node.stillMatches) {
     return { error: `drift: ref ${ref} no longer matches` };
   }
   return { node };
@@ -87,7 +92,14 @@ async function isSubmitControl(handle: unknown): Promise<boolean> {
   }
 }
 
-export function createExecutor(page: Page, engine: ObservationEngine, xray?: Xray): Executor {
+export function createExecutor(
+  page: Page,
+  engine: ObservationEngine,
+  xray?: Xray,
+  opts?: { guards?: boolean },
+): Executor {
+  const guards = opts?.guards ?? true;
+
   async function runBatch(actions: Action[]): Promise<BatchResult> {
     const steps: StepResult[] = [];
     let doneResult: string | undefined;
@@ -98,7 +110,7 @@ export function createExecutor(page: Page, engine: ObservationEngine, xray?: Xra
       try {
         switch (action.act) {
           case "click": {
-            const resolved = await resolveGuarded(engine, action.ref);
+            const resolved = await resolveGuarded(engine, action.ref, guards);
             if ("error" in resolved) {
               steps.push({ action, ok: false, error: resolved.error, driftDetected: true });
               return { steps, completed: false, abortedAt: i, done: doneResult };
@@ -128,7 +140,7 @@ export function createExecutor(page: Page, engine: ObservationEngine, xray?: Xra
           }
 
           case "fill": {
-            const resolved = await resolveGuarded(engine, action.ref);
+            const resolved = await resolveGuarded(engine, action.ref, guards);
             if ("error" in resolved) {
               steps.push({ action, ok: false, error: resolved.error, driftDetected: true });
               return { steps, completed: false, abortedAt: i, done: doneResult };
@@ -140,7 +152,7 @@ export function createExecutor(page: Page, engine: ObservationEngine, xray?: Xra
           }
 
           case "select": {
-            const resolved = await resolveGuarded(engine, action.ref);
+            const resolved = await resolveGuarded(engine, action.ref, guards);
             if ("error" in resolved) {
               steps.push({ action, ok: false, error: resolved.error, driftDetected: true });
               return { steps, completed: false, abortedAt: i, done: doneResult };
@@ -197,7 +209,7 @@ export function createExecutor(page: Page, engine: ObservationEngine, xray?: Xra
 
           case "expect": {
             if (action.ref !== undefined) {
-              const resolved = await resolveGuarded(engine, action.ref);
+              const resolved = await resolveGuarded(engine, action.ref, guards);
               if ("error" in resolved) {
                 steps.push({ action, ok: false, error: resolved.error });
                 return { steps, completed: false, abortedAt: i, done: doneResult };

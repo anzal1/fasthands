@@ -49,19 +49,19 @@ traces replay deterministically behind the same drift guards).
 
 <!-- RESULTS -->
 Six tasks (form, product search, checkout wizard, settings toggles, infinite
-scroll, validation-trap signup), four loop styles, identical oracle policy and
-verifiers. 24/24 verified successes.
+scroll, validation-trap signup), four loop styles, 5 repetitions each,
+identical oracle policy and DOM-verified success conditions. 120/120 passes.
 
 | style | what it models | turns | observation tokens | success |
 |---|---|---:|---:|---|
-| screenshot | Anthropic-style loop: image/turn, 1 action/turn | 42 | 57,372 | 6/6 |
-| fulltree | Astra-style loop: full a11y tree/turn, batched code actions | 26 | 13,392 | 6/6 |
-| **fasthands** | diffs + guarded batching | 26 | **5,854** | 6/6 |
-| **fasthands + xray** | + HTML-contract annotations & preflight | **25** | **4,754** | 6/6 |
+| screenshot | Anthropic-style loop: image/turn, 1 action/turn | 210 | 286,860 | 30/30 |
+| fulltree | Astra-style loop: full a11y tree/turn, batched code actions | 130 | 63,984 | 30/30 |
+| **fasthands** | diffs + guarded batching | 127 | **24,817** | 30/30 |
+| **fasthands + xray** | + HTML-contract annotations & preflight | **125** | 29,250 | 30/30 |
 
-- **vs the screenshot loop: 91.7% fewer tokens, 40.5% fewer turns.**
-- **vs the Astra-style full-tree loop: 64.5% fewer tokens** (xray annotation
-  tokens counted against us).
+- **vs the screenshot loop: 91.3% fewer tokens, 39.5% fewer turns.**
+- **vs the Astra-style full-tree loop: 61.2% fewer tokens** (diff engine alone;
+  xray annotation tokens counted where used).
 - The signup trap isolates the capability win: hidden validation rules
   (username/password patterns with no visible hint). Screenshot loop: 8 turns.
   Batched loops: 3 turns (fail a submit, read errors, retry). **xray: 2 turns,
@@ -69,13 +69,78 @@ verifiers. 24/24 verified successes.
   submit.**
 <!-- /RESULTS -->
 
-Reproducible with **zero API keys**: the default benchmark drives all three
-loop styles with a deterministic oracle policy over five local fixture tasks
-(form, search, checkout wizard, settings toggles, infinite scroll), so the
-numbers isolate loop efficiency from model quality. Screenshot-style image
-tokens are simulated at Anthropic's published (w·h)/750 formula. Add
-`--provider anthropic --model claude-sonnet-5` (or any OpenAI-compatible
-endpoint) to run live.
+Aggregated over **5 repetitions per cell (120 runs, 120/120 verified
+successes, near-zero variance)**. Reproducible with **zero API keys**: the
+benchmark drives all four loop styles with a deterministic oracle policy over
+local fixture tasks, so the numbers isolate loop efficiency from model
+quality. Screenshot-style image tokens use Anthropic's published (w·h)/750
+formula. Add `--provider anthropic --model claude-sonnet-5` (or any
+OpenAI-compatible endpoint) to run live.
+
+**Honest trade-off, reported as measured:** xray annotations are not free. On
+tasks without forms they cost extra (xray total 29,250 tokens vs plain
+fasthands 24,817 across the suite); they pay for themselves only where hidden
+contracts exist. Use `xray` when forms are in play.
+
+## The drift trap: 0% vs 100% catastrophe
+
+The failure mode Astra's authors themselves admit — state drift between
+observing and acting — reproduced deterministically. A page swaps an "Archive
+message 3" button into "Delete all messages" 800ms after load, *in place*, the
+way real lists reorder and ads inject. The agent observed before the swap and
+acts after it.
+
+| arm | trials | catastrophes | safe aborts | recovered |
+|---|---:|---:|---:|---:|
+| unguarded batch (fires blind on stale refs) | 20 | **20 (100%)** | 0 | 0 |
+| fasthands guarded batch | 20 | **0 (0%)** | 20 | **20 (100%)** |
+
+The guard is a content hash re-checked at click time: the mutated node no
+longer matches what the model saw, the batch aborts, the fresh observation
+finds the real button. Reproduce: `node --experimental-strip-types
+src/bench/drift-test.ts`.
+
+## Scale: where baselines drown
+
+Per-observation cost on a parametric page with N distractor elements
+(measured, chars/4 for all text strategies, real screenshot dimensions for
+images):
+
+| N elements | raw HTML dump | screenshot | full a11y tree (uncapped) | **fasthands diff** |
+|---:|---:|---:|---:|---:|
+| 50 | 5,333 | 1,366 | 2,197 | **38** |
+| 200 | 15,642 | 1,366 | 8,962 | **38** |
+| 500 | 36,533 | 1,366 | 22,791 | **38** |
+| 1,000 | 71,513 | 1,366 | 46,000 | **39** |
+| 2,000 | 141,910 | 1,366 | 92,732 | **39** |
+
+The full tree grows ~42x across this range; the diff after a state change
+stays flat at 38-39 tokens. The screenshot is flat too — but it's flat because
+it's blind: viewport-only, it never sees any of it. Caveats we found and
+report plainly: under a tight 2,000-token budget the engine's viewport-first
+truncation flattens the in-loop cost for *both* tree styles (the in-loop diff
+advantage measures ~27% and does not grow with N on this fixture); the
+dramatic scaling gap above is per-observation, uncapped. Reproduce: `node
+--experimental-strip-types src/bench/scale-test.ts`.
+
+## Methodology and limitations (read before citing)
+
+- **The oracle is not a model.** All headline numbers use a deterministic
+  scripted policy so every loop style gets identical competence and anyone can
+  reproduce them with no API keys. They measure *loop cost*, not model
+  intelligence. Live mode (`--provider ...`) exists for end-to-end runs.
+- **Fixtures are synthetic and local.** Deterministic by design so the
+  benchmark can't flake its way to a good number. We make no claim about
+  WebVoyager/OSWorld-style end-task success rates against other frameworks.
+- **The "screenshot" baseline models the loop shape** (one action per turn,
+  (w·h)/750 image tokens per turn), not Anthropic's actual production harness,
+  which adds prompt caching and history pruning.
+- **Token unit:** chars/4 for every text strategy, identically, so ratios are
+  apples-to-apples; image tokens use Anthropic's published formula.
+- **Competitor figures** (browser-use's 41% batching savings, Stagehand v3's
+  44%, Skyvern's replay cache) are cited from their own publications in
+  [docs/competitive-research.md](docs/competitive-research.md), not reproduced
+  here.
 
 ## Quick start
 
