@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Find the cheapest laptop</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .header {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 8px;
+      margin-bottom: 2rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      color: #333;
+    }
+    .search-group {
+      display: flex;
+      gap: 0.5rem;
+    }
+    input[type="search"] {
+      flex: 1;
+      padding: 0.75rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+    input[type="search"]:focus {
+      outline: none;
+      border-color: #0066cc;
+      box-shadow: 0 0 0 2px rgba(0,102,204,0.1);
+    }
+    button {
+      padding: 0.75rem 1.5rem;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #0052a3;
+    }
+    .cart-info {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid #eee;
+      font-size: 0.875rem;
+      color: #666;
+    }
+    .products-section {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    ul {
+      list-style: none;
+    }
+    .product-list > li {
+      padding: 1rem;
+      border: 1px solid #eee;
+      border-radius: 4px;
+      margin-bottom: 0.75rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .product-list > li:hover {
+      background: #fafafa;
+    }
+    .product-name {
+      font-weight: 500;
+      color: #333;
+      margin-bottom: 0.25rem;
+    }
+    .product-price {
+      color: #0066cc;
+      font-weight: 600;
+    }
+    .detail-view {
+      display: none;
+    }
+    .detail-view h2 {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      color: #333;
+    }
+    .detail-view .price {
+      font-size: 1.5rem;
+      color: #0066cc;
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+    .back-button {
+      margin-bottom: 1rem;
+      padding: 0.5rem 1rem;
+      background: #f0f0f0;
+      color: #333;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.875rem;
+    }
+    .back-button:hover {
+      background: #e0e0e0;
+    }
+    .add-to-cart-button {
+      width: 100%;
+      padding: 1rem;
+      background: #059669;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .add-to-cart-button:hover {
+      background: #047857;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Find the cheapest laptop</h1>
+      <div class="search-group">
+        <input type="search" id="searchInput" aria-label="Search products" placeholder="Search products...">
+        <button id="searchButton">Search</button>
+      </div>
+      <div class="cart-info">
+        Cart: <span data-cart-count>0</span> item(s)
+      </div>
+    </div>
+
+    <div class="products-section">
+      <div id="listView">
+        <ul class="product-list" id="productList"></ul>
+      </div>
+      <div id="detailView" class="detail-view">
+        <button class="back-button" id="backButton">Back to results</button>
+        <h2 id="detailName"></h2>
+        <div class="price" id="detailPrice"></div>
+        <button class="add-to-cart-button" id="addToCartButton">Add to cart</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const products = [
+      { id: 1, name: "Pixelbook Lite", price: 499 },
+      { id: 2, name: "MacBook Air M2", price: 1199 },
+      { id: 3, name: "Dell XPS 13", price: 899 },
+      { id: 4, name: "Lenovo ThinkPad", price: 795 },
+      { id: 5, name: "HP Pavilion", price: 519 },
+      { id: 6, name: "ASUS VivoBook", price: 505 },
+      { id: 7, name: "Acer Swift 3", price: 699 },
+      { id: 8, name: "Surface Laptop 5", price: 999 },
+      { id: 9, name: "iPad Pro 11", price: 799 },
+      { id: 10, name: "Google Pixelbook Go", price: 649 },
+      { id: 11, name: "Samsung Galaxy Book", price: 899 },
+      { id: 12, name: "OnePlus Pad", price: 549 }
+    ];
+
+    let filteredProducts = [...products];
+    let currentDetail = null;
+    let cart = [];
+
+    const searchInput = document.getElementById('searchInput');
+    const searchButton = document.getElementById('searchButton');
+    const productList = document.getElementById('productList');
+    const listView = document.getElementById('listView');
+    const detailView = document.getElementById('detailView');
+    const backButton = document.getElementById('backButton');
+    const addToCartButton = document.getElementById('addToCartButton');
+
+    function renderProductList() {
+      productList.innerHTML = '';
+      filteredProducts.forEach(product => {
+        const li = document.createElement('li');
+        li.setAttribute('role', 'listitem');
+        li.innerHTML = `
+          <div class="product-name">${product.name}</div>
+          <div class="product-price">$${product.price}</div>
+        `;
+        li.addEventListener('click', () => showDetail(product));
+        productList.appendChild(li);
+      });
+    }
+
+    function showDetail(product) {
+      currentDetail = product;
+      listView.style.display = 'none';
+      detailView.style.display = 'block';
+      document.getElementById('detailName').textContent = product.name;
+      document.getElementById('detailPrice').textContent = `$${product.price}`;
+    }
+
+    function backToList() {
+      listView.style.display = 'block';
+      detailView.style.display = 'none';
+      currentDetail = null;
+    }
+
+    function updateCartCount() {
+      const cartCountElement = document.querySelector('[data-cart-count]');
+      cartCountElement.textContent = cart.length;
+    }
+
+    function addToCart() {
+      if (currentDetail && !cart.some(p => p.id === currentDetail.id)) {
+        cart.push(currentDetail);
+        updateCartCount();
+        addToCartButton.textContent = 'Added to cart';
+        addToCartButton.disabled = true;
+      }
+    }
+
+    function performSearch() {
+      const query = searchInput.value.trim().toLowerCase();
+      filteredProducts = products.filter(product =>
+        product.name.toLowerCase().includes(query)
+      );
+      renderProductList();
+    }
+
+    searchButton.addEventListener('click', performSearch);
+    searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        performSearch();
+      }
+    });
+
+    backButton.addEventListener('click', backToList);
+    addToCartButton.addEventListener('click', addToCart);
+
+    // Initial render
+    renderProductList();
+  </script>
+</body>
+</html>

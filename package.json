@@ -1,0 +1,19 @@
+{
+  "name": "fasthands",
+  "version": "0.1.0",
+  "description": "Open-source, model-agnostic computer use. Diff observations + guarded action batching = fewer tokens, fewer turns, faster tasks.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "bench": "node --experimental-strip-types src/bench/run.ts",
+    "fixtures": "node --experimental-strip-types src/bench/fixtures-server.ts"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^24.0.0"
+  }
+}

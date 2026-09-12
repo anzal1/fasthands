@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 2rem;
+      color: #333;
+    }
+    .settings-group {
+      margin-bottom: 2rem;
+    }
+    .setting-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem;
+      border: 1px solid #eee;
+      border-radius: 4px;
+      margin-bottom: 0.75rem;
+      gap: 1rem;
+    }
+    .setting-label {
+      font-weight: 500;
+      color: #333;
+      flex: 1;
+    }
+    .switch-button {
+      width: 50px;
+      height: 26px;
+      border: none;
+      border-radius: 13px;
+      background: #ccc;
+      cursor: pointer;
+      position: relative;
+      transition: background 0.2s;
+      padding: 0;
+      flex-shrink: 0;
+    }
+    .switch-button[aria-checked="true"] {
+      background: #059669;
+    }
+    .switch-button::after {
+      content: '';
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      background: white;
+      border-radius: 50%;
+      top: 2px;
+      left: 2px;
+      transition: left 0.2s;
+    }
+    .switch-button[aria-checked="true"]::after {
+      left: 26px;
+    }
+    .button-group {
+      margin-top: 2rem;
+      display: flex;
+      gap: 1rem;
+    }
+    .save-button {
+      flex: 1;
+      padding: 0.75rem;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .save-button:hover {
+      background: #0052a3;
+    }
+    .status-message {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      background: #ecfdf5;
+      border: 1px solid #d1fae5;
+      border-radius: 4px;
+      color: #065f46;
+      display: none;
+      role: status;
+    }
+    .status-message.show {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Settings</h1>
+
+    <div class="settings-group">
+      <div class="setting-item">
+        <span class="setting-label">Dark mode</span>
+        <button class="switch-button" role="switch" aria-checked="false" aria-label="Dark mode" data-setting="darkMode"></button>
+      </div>
+
+      <div class="setting-item">
+        <span class="setting-label">Email digest</span>
+        <button class="switch-button" role="switch" aria-checked="false" aria-label="Email digest" data-setting="emailDigest"></button>
+      </div>
+
+      <div class="setting-item">
+        <span class="setting-label">Telemetry</span>
+        <button class="switch-button" role="switch" aria-checked="true" aria-label="Telemetry" data-setting="telemetry"></button>
+      </div>
+
+      <div class="setting-item">
+        <span class="setting-label">Auto-play videos</span>
+        <button class="switch-button" role="switch" aria-checked="false" aria-label="Auto-play videos" data-setting="autoPlayVideos"></button>
+      </div>
+
+      <div class="setting-item">
+        <span class="setting-label">Compact layout</span>
+        <button class="switch-button" role="switch" aria-checked="false" aria-label="Compact layout" data-setting="compactLayout"></button>
+      </div>
+
+      <div class="setting-item">
+        <span class="setting-label">Beta features</span>
+        <button class="switch-button" role="switch" aria-checked="false" aria-label="Beta features" data-setting="betaFeatures"></button>
+      </div>
+
+      <div class="setting-item">
+        <span class="setting-label">Sound effects</span>
+        <button class="switch-button" role="switch" aria-checked="false" aria-label="Sound effects" data-setting="soundEffects"></button>
+      </div>
+
+      <div class="setting-item">
+        <span class="setting-label">Two-factor prompts</span>
+        <button class="switch-button" role="switch" aria-checked="false" aria-label="Two-factor prompts" data-setting="twoFactorPrompts"></button>
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button class="save-button" id="saveButton">Save</button>
+    </div>
+
+    <div class="status-message" id="statusMessage" role="status">
+      Preferences saved
+    </div>
+  </div>
+
+  <script>
+    const switches = document.querySelectorAll('.switch-button');
+    const saveButton = document.getElementById('saveButton');
+    const statusMessage = document.getElementById('statusMessage');
+
+    const settings = {
+      darkMode: false,
+      emailDigest: false,
+      telemetry: true,
+      autoPlayVideos: false,
+      compactLayout: false,
+      betaFeatures: false,
+      soundEffects: false,
+      twoFactorPrompts: false
+    };
+
+    switches.forEach(switchBtn => {
+      switchBtn.addEventListener('click', () => {
+        const setting = switchBtn.getAttribute('data-setting');
+        const currentState = switchBtn.getAttribute('aria-checked') === 'true';
+        const newState = !currentState;
+
+        switchBtn.setAttribute('aria-checked', newState);
+        settings[setting] = newState;
+      });
+    });
+
+    saveButton.addEventListener('click', () => {
+      // Show status message
+      statusMessage.classList.add('show');
+
+      // Hide after 3 seconds
+      setTimeout(() => {
+        statusMessage.classList.remove('show');
+      }, 3000);
+    });
+  </script>
+</body>
+</html>

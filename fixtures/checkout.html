@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Checkout</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .step-title {
+      font-size: 1.5rem;
+      margin-bottom: 1.5rem;
+      color: #333;
+    }
+    .step {
+      display: none;
+    }
+    .step.active {
+      display: block;
+    }
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+      color: #333;
+    }
+    input[type="text"],
+    input[type="email"] {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-family: inherit;
+    }
+    input[type="text"]:focus,
+    input[type="email"]:focus {
+      outline: none;
+      border-color: #0066cc;
+      box-shadow: 0 0 0 2px rgba(0,102,204,0.1);
+    }
+    .radio-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    input[type="radio"] {
+      cursor: pointer;
+      width: 18px;
+      height: 18px;
+    }
+    input[type="radio"]:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+    label:has(input[type="radio"]:disabled) {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .error {
+      color: #dc2626;
+      font-size: 0.875rem;
+      margin-top: 0.25rem;
+    }
+    button {
+      width: 100%;
+      padding: 0.75rem;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover:not(:disabled) {
+      background: #0052a3;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .review-section {
+      background: #f9f9f9;
+      padding: 1rem;
+      border-radius: 4px;
+      margin-bottom: 1.5rem;
+    }
+    .review-section h3 {
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      color: #666;
+      margin-bottom: 0.5rem;
+    }
+    .review-item {
+      color: #333;
+      margin-bottom: 0.25rem;
+    }
+    .success {
+      text-align: center;
+      padding: 2rem 0;
+    }
+    .success h1 {
+      color: #059669;
+      margin-bottom: 1rem;
+      font-size: 1.5rem;
+    }
+    .success p {
+      color: #666;
+      margin-bottom: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="checkoutForm">
+      <h1 class="step-title" id="stepTitle">Shipping</h1>
+
+      <!-- Step 1: Shipping -->
+      <div id="step1" class="step active">
+        <div class="form-group">
+          <label for="fullName">Full name</label>
+          <input type="text" id="fullName" name="fullName">
+          <div class="error" id="fullNameError"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="address">Street address</label>
+          <input type="text" id="address" name="address">
+          <div class="error" id="addressError"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="city">City</label>
+          <input type="text" id="city" name="city">
+          <div class="error" id="cityError"></div>
+        </div>
+
+        <button id="step1Continue">Continue</button>
+      </div>
+
+      <!-- Step 2: Payment -->
+      <div id="step2" class="step">
+        <div class="form-group">
+          <div class="radio-group">
+            <div class="radio-option">
+              <input type="radio" id="paymentMethod1" name="paymentMethod" value="delivery" checked>
+              <label for="paymentMethod1">Pay on delivery</label>
+            </div>
+            <div class="radio-option">
+              <input type="radio" id="paymentMethod2" name="paymentMethod" value="credit" disabled>
+              <label for="paymentMethod2">Credit card (disabled)</label>
+            </div>
+          </div>
+          <div class="error" id="paymentError"></div>
+        </div>
+
+        <button id="step2Continue">Continue</button>
+      </div>
+
+      <!-- Step 3: Review -->
+      <div id="step3" class="step">
+        <div class="review-section">
+          <h3>Shipping Address</h3>
+          <div class="review-item" id="reviewName"></div>
+          <div class="review-item" id="reviewAddress"></div>
+          <div class="review-item" id="reviewCity"></div>
+        </div>
+
+        <div class="review-section">
+          <h3>Payment Method</h3>
+          <div class="review-item" id="reviewPayment"></div>
+        </div>
+
+        <button id="placeOrderButton">Place order</button>
+      </div>
+    </div>
+
+    <div id="successMessage" style="display: none;">
+      <div class="success">
+        <h1>Order placed</h1>
+        <p>Order ID: <strong id="order-id">ORD-88412</strong></p>
+        <p>Thank you for your purchase!</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentStep = 1;
+    const formData = {
+      fullName: '',
+      address: '',
+      city: '',
+      paymentMethod: 'delivery'
+    };
+
+    const step1Continue = document.getElementById('step1Continue');
+    const step2Continue = document.getElementById('step2Continue');
+    const placeOrderButton = document.getElementById('placeOrderButton');
+    const stepTitle = document.getElementById('stepTitle');
+    const checkoutForm = document.getElementById('checkoutForm');
+    const successMessage = document.getElementById('successMessage');
+
+    function clearErrors() {
+      document.getElementById('fullNameError').textContent = '';
+      document.getElementById('addressError').textContent = '';
+      document.getElementById('cityError').textContent = '';
+      document.getElementById('paymentError').textContent = '';
+    }
+
+    function showStep(stepNumber) {
+      document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+      document.getElementById('step' + stepNumber).classList.add('active');
+
+      const titles = ['Shipping', 'Payment', 'Review'];
+      stepTitle.textContent = titles[stepNumber - 1];
+
+      if (stepNumber === 3) {
+        // Populate review
+        document.getElementById('reviewName').textContent = `Name: ${formData.fullName}`;
+        document.getElementById('reviewAddress').textContent = `Address: ${formData.address}`;
+        document.getElementById('reviewCity').textContent = `City: ${formData.city}`;
+        document.getElementById('reviewPayment').textContent = `Payment: ${formData.paymentMethod === 'delivery' ? 'Pay on delivery' : 'Credit card'}`;
+      }
+    }
+
+    step1Continue.addEventListener('click', () => {
+      clearErrors();
+
+      const fullName = document.getElementById('fullName').value.trim();
+      const address = document.getElementById('address').value.trim();
+      const city = document.getElementById('city').value.trim();
+
+      let hasError = false;
+
+      if (!fullName) {
+        document.getElementById('fullNameError').textContent = 'Full name is required';
+        hasError = true;
+      }
+      if (!address) {
+        document.getElementById('addressError').textContent = 'Street address is required';
+        hasError = true;
+      }
+      if (!city) {
+        document.getElementById('cityError').textContent = 'City is required';
+        hasError = true;
+      }
+
+      if (!hasError) {
+        formData.fullName = fullName;
+        formData.address = address;
+        formData.city = city;
+        currentStep = 2;
+        showStep(2);
+      }
+    });
+
+    step2Continue.addEventListener('click', () => {
+      clearErrors();
+      const selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
+
+      if (selectedPayment === 'credit') {
+        document.getElementById('paymentError').textContent = 'Credit card is not available';
+      } else {
+        formData.paymentMethod = selectedPayment;
+        currentStep = 3;
+        showStep(3);
+      }
+    });
+
+    placeOrderButton.addEventListener('click', () => {
+      checkoutForm.style.display = 'none';
+      successMessage.style.display = 'block';
+    });
+
+    // Initialize
+    showStep(1);
+  </script>
+</body>
+</html>
