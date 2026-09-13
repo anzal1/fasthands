@@ -66,6 +66,9 @@ const PALETTE_HEX: Record<string, string> = {
   sage: "#7d8f5c", "deep green": "#2f4a42", "slate blue": "#24384a",
   "steel blue": "#3d5a73", "haze blue": "#6b8ba3", "pale sky": "#a7bfc9",
   plum: "#5c2f3d", "lavender grey": "#8a7f96",
+  ultramarine: "#2a4d9b", cobalt: "#1f6fb2", "chrome yellow": "#f4c542",
+  lemon: "#f7e26b", crimson: "#a81c2b", vermilion: "#d3492a",
+  white: "#ffffff", moss: "#4a7a3a",
 };
 
 const plan = await planPainting(page, {

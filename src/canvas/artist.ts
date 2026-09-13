@@ -351,11 +351,26 @@ export async function planPainting(
         g.strokes.push(pts);
       };
 
-      // Layer 1: broad washes everywhere.
-      for (let y = 3; y < h - 3; y += 8) {
-        for (let x = 3 + ((y / 8) | 0) % 4; x < w - 3; x += 8) {
+      // Layer 0: prime the canvas — full-coverage underpainting. A painter
+      // never leaves raw canvas showing; every grid cell gets a dab in its
+      // region's color, oriented along the local form. The 8px broad brush
+      // on a 6px grid guarantees no holes.
+      for (let y = 2; y < h - 2; y += 6) {
+        for (let x = 2 + ((y / 6) | 0) % 3; x < w - 2; x += 6) {
+          const [tx, ty] = tangent(x, y, 0.4);
+          const pts: Pt[] = [
+            { x: Math.max(1, x - tx * 3), y: Math.max(1, y - ty * 3) },
+            { x, y },
+            { x: Math.min(w - 2, x + tx * 3), y: Math.min(h - 2, y + ty * 3) },
+          ];
+          put("broad", P(x, y), pts);
+        }
+      }
+      // Layer 1: broad flow washes for movement on top of the priming.
+      for (let y = 3; y < h - 3; y += 9) {
+        for (let x = 3 + ((y / 9) | 0) % 4; x < w - 3; x += 9) {
           const pts = trace(x, y, 0.4, 2.6, 15);
-          if (pts.length >= 3) put("broad", P(x, y), pts);
+          if (pts.length >= 4) put("broad", P(x, y), pts);
         }
       }
       // Layer 2: medium form strokes where there is structure.

@@ -1,9 +1,9 @@
-// Designer mode: compose an original illustration on excalidraw.com — a real,
-// unmodified third-party production app. The agent works like a designer:
-// selects tools with the app's own keyboard shortcuts, drags shapes out on
-// the canvas through guarded pointer/stroke actions, tries the app's color
-// panel when it can observe one, and verifies its work through Excalidraw's
-// own persisted scene state (localStorage) — no vision anywhere.
+// Designer mode v2 on excalidraw.com (real, unmodified third-party app).
+// The v1 critique was fair: outlines only, doodle geometry. A designer uses
+// FILLED native shapes and the style panel. v2 discovers the panel from its
+// own observation (fill-style + background swatches are labeled buttons),
+// sets solid fill, and composes a z-ordered scene: sky, sun, mountains,
+// ground, house, birds, caption. Every interaction is a guarded action.
 //   node --experimental-strip-types demos/designer.ts [--headed]
 
 import { fileURLToPath } from "node:url";
@@ -25,126 +25,122 @@ function findAll(node: FHNode, pred: (n: FHNode) => boolean, acc: FHNode[] = [])
 const browser = await chromium.launch({ headless: !headed });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 await page.goto("https://excalidraw.com", { waitUntil: "domcontentloaded" });
-await page.waitForTimeout(2500); // let the app boot
-await page.keyboard.press("Escape"); // dismiss any welcome hints
+await page.waitForTimeout(2500);
+await page.keyboard.press("Escape");
 
 const engine = createObservationEngine(page);
 const executor = createExecutor(page, engine);
 
-const obs = await engine.observe(4000);
-const canvases = findAll(obs.snapshot.tree, (n) => n.role === "canvas");
-if (canvases.length === 0) throw new Error("no canvas observed on excalidraw.com");
-// Excalidraw layers a static canvas under an interactive one; the interactive
-// canvas is the last in DOM order. If strokes land nowhere we fall back.
-let board = canvases[canvases.length - 1];
-console.log(
-  `observed excalidraw: ${canvases.length} canvases (using ${board.ref} = ${board.value}), ` +
-    `${findAll(obs.snapshot.tree, (n) => n.role === "button").length} buttons, ${obs.approxTokens} tokens`,
-);
-
-const elementCount = async (): Promise<number> =>
-  page.evaluate(() => {
-    try {
-      return (JSON.parse(localStorage.getItem("excalidraw") ?? "[]") as unknown[]).length;
-    } catch {
-      return -1;
-    }
-  });
-
-// Tool selection via Excalidraw's stable digit shortcuts:
-// 1 select, 2 rectangle, 4 ellipse, 6 line, 7 draw (pencil), 8 text.
-const tool = (key: string): Action => ({ act: "press", key });
-const drag = (x1: number, y1: number, x2: number, y2: number): Action => ({
-  act: "stroke",
-  ref: board.ref,
-  path: [{ x: x1, y: y1 }, { x: x2, y: y2 }],
-});
-const draw = (pts: [number, number][]): Action => ({
-  act: "stroke",
-  ref: board.ref,
-  path: pts.map(([x, y]) => ({ x, y })),
-});
-
-// Probe: one rectangle, then check the scene registered it.
-let result = await executor.runBatch([tool("2"), drag(300, 620, 980, 640)]);
-if ((await elementCount()) < 1 && canvases.length > 1) {
-  board = canvases[0];
-  console.log(`probe drew nothing; switching to canvas ${board.ref}`);
-  result = await executor.runBatch([tool("2"), drag(300, 620, 980, 640)]);
+// Excalidraw re-renders its DOM as panels open and close, which changes
+// stability keys — cached refs die and the drift guard rightly refuses them
+// (it refused OUR first version). So we behave like the real agent loop:
+// re-observe before every layer and resolve the canvas and swatches by NAME
+// from the fresh tree. Names are stable; refs are per-observation.
+interface View {
+  canvasRef: string;
+  swatch: (hexIncludes: string) => string | null;
+  solid: string | null;
 }
-console.log(`probe: ${result.completed ? "ok" : "failed"}, scene elements: ${await elementCount()}`);
+async function look(): Promise<View> {
+  const o = await engine.observe(6000);
+  const canvasNodes = findAll(o.snapshot.tree, (n) => n.role === "canvas");
+  if (canvasNodes.length === 0) throw new Error("canvas vanished from observation");
+  const buttons = findAll(o.snapshot.tree, (n) => n.role === "button");
+  const swatches = buttons.filter((b) => /^#|transparent/i.test(b.name.trim()));
+  // Stroke presets come first, background presets second.
+  const bgGroup = swatches.length >= 10 ? swatches.slice(5, 10) : swatches;
+  return {
+    canvasRef: canvasNodes[canvasNodes.length - 1].ref,
+    swatch: (hex) => bgGroup.find((b) => b.name.toLowerCase().includes(hex))?.ref ?? null,
+    solid: buttons.find((b) => /solid/i.test(b.name))?.ref ?? null,
+  };
+}
 
-// ---- the illustration: "Liftoff" — a rocket over clouds, moon and stars ----
-const plan: Action[][] = [
-  // launch pad line already drawn as the probe (300,620)-(980,640) rectangle base
-  // rocket body
-  [tool("2"), drag(590, 300, 690, 500)],
-  // nose cone
-  [tool("7"), draw([[590, 300], [640, 210], [690, 300]])],
-  // fins
-  [tool("7"), draw([[590, 480], [545, 560], [590, 545]])],
-  [tool("7"), draw([[690, 480], [735, 560], [690, 545]])],
-  // window
-  [tool("4"), drag(615, 350, 665, 400)],
-  // flame
-  [tool("7"), draw([[605, 505], [640, 600], [675, 505]])],
-  [tool("7"), draw([[622, 505], [640, 560], [658, 505]])],
-  // clouds: three ellipses hugging the pad
-  [tool("4"), drag(360, 580, 560, 650)],
-  [tool("4"), drag(520, 600, 760, 670)],
-  [tool("4"), drag(720, 575, 930, 645)],
-  // moon
-  [tool("4"), drag(1010, 130, 1110, 230)],
-  // stars: little plus marks
-  [tool("7"), draw([[380, 180], [380, 200]])],
-  [tool("7"), draw([[370, 190], [390, 190]])],
-  [tool("7"), draw([[480, 120], [480, 138]])],
-  [tool("7"), draw([[471, 129], [489, 129]])],
-  [tool("7"), draw([[880, 90], [880, 108]])],
-  [tool("7"), draw([[871, 99], [889, 99]])],
-  [tool("7"), draw([[300, 320], [300, 338]])],
-  [tool("7"), draw([[291, 329], [309, 329]])],
-  // motion streaks beside the rocket
-  [tool("6"), drag(560, 330, 560, 430)],
-  [tool("6"), drag(720, 330, 720, 430)],
-];
+const tool = (key: string): Action => ({ act: "press", key });
 
 let ok = 0, planned = 0;
-for (const batch of plan) {
-  planned += batch.length;
-  const r = await executor.runBatch(batch);
+async function run(actions: Action[]): Promise<void> {
+  planned += actions.length;
+  const r = await executor.runBatch(actions);
   ok += r.steps.filter((s) => s.ok).length;
   if (!r.completed) console.log("batch aborted:", r.steps[r.abortedAt!]?.error);
 }
 
-// Title, like a designer labels a frame: text tool, click, type, escape.
-const title: Action[] = [
-  tool("8"),
-  { act: "pointer", ref: board.ref, x: 545, y: 700 },
-  ...[..."LIFTOFF"].map((ch): Action => ({ act: "press", key: ch })),
-  tool("Escape"),
-];
-const tr = await executor.runBatch(title);
-ok += tr.steps.filter((s) => s.ok).length;
-planned += title.length;
-
-const elements = await elementCount();
-console.log(JSON.stringify({ planned, ok, sceneElements: elements }, null, 2));
-
-// Verify through the app's own state: what did Excalidraw record?
-const summary = await page.evaluate(() => {
-  try {
-    const els = JSON.parse(localStorage.getItem("excalidraw") ?? "[]") as { type: string; text?: string }[];
-    const byType: Record<string, number> = {};
-    for (const e of els) byType[e.type] = (byType[e.type] ?? 0) + 1;
-    return { byType, text: els.find((e) => e.type === "text")?.text ?? null };
-  } catch {
-    return null;
+/** One design layer: fresh look, set background color, optionally set solid
+ *  fill, pick the tool, drag the shape. */
+async function shape(toolKey: string, bgHex: string | null, rect: [number, number, number, number]): Promise<void> {
+  const v = await look();
+  const acts: Action[] = [];
+  if (bgHex) {
+    const sw = v.swatch(bgHex);
+    if (sw) {
+      // Clicking a swatch opens Excalidraw's color popup, which eats the
+      // next keypress/drag — close it before touching the canvas.
+      acts.push({ act: "click", ref: sw }, tool("Escape"));
+    } else {
+      console.log(`swatch ${bgHex} not visible this turn; keeping current color`);
+    }
   }
+  if (v.solid) acts.push({ act: "click", ref: v.solid }, tool("Escape"));
+  acts.push(tool(toolKey), {
+    act: "stroke",
+    ref: v.canvasRef,
+    path: [{ x: rect[0], y: rect[1] }, { x: rect[2], y: rect[3] }],
+  });
+  await run(acts);
+}
+
+async function freehand(pts: [number, number][]): Promise<void> {
+  const v = await look();
+  await run([tool("7"), { act: "stroke", ref: v.canvasRef, path: pts.map(([x, y]) => ({ x, y })) }]);
+}
+
+// Activate a shape tool once so the style panel exists, and report discovery.
+await run([tool("2")]);
+const first = await look();
+console.log(`style panel: solid=${first.solid ?? "not labeled"}, blue swatch=${first.swatch("a5d8ff")}`);
+
+// ---- the composition: "DAWN" — z-ordered, filled, proportioned ------------
+await shape("2", "a5d8ff", [80, 130, 1200, 650]);    // sky
+await shape("4", "ffec99", [950, 165, 1085, 300]);   // sun
+await shape("3", "b2f2bb", [130, 330, 700, 660]);    // mountain 1
+await shape("3", null, [510, 390, 1130, 660]);       // mountain 2
+await shape("2", null, [80, 555, 1200, 660]);        // ground band
+await shape("2", "ffc9c9", [860, 470, 985, 585]);    // house
+await shape("3", null, [830, 415, 1015, 505]);       // roof
+await shape("2", "ffec99", [903, 528, 942, 585]);    // door
+await freehand([[300, 200], [320, 188], [340, 200]]); // birds
+await freehand([[365, 232], [383, 221], [401, 232]]);
+await freehand([[250, 260], [264, 251], [278, 260]]);
+
+const vt = await look();
+await run([
+  tool("8"),
+  { act: "pointer", ref: vt.canvasRef, x: 598, y: 700 },
+  ...[..."DAWN"].map((ch): Action => ({ act: "press", key: ch })),
+  tool("Escape"),
+]);
+console.log(JSON.stringify({ planned, ok }, null, 2));
+
+// Verify through the app's own persisted scene, whatever key it lives under.
+const sceneState = await page.evaluate(() => {
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)!;
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key)!);
+      if (Array.isArray(parsed) && parsed.length && parsed[0]?.type) {
+        const byType: Record<string, number> = {};
+        for (const e of parsed) byType[e.type] = (byType[e.type] ?? 0) + 1;
+        return { key, count: parsed.length, byType, text: parsed.find((e: any) => e.type === "text")?.text ?? null };
+      }
+    } catch { /* not this key */ }
+  }
+  return null;
 });
-console.log("excalidraw scene:", JSON.stringify(summary));
+console.log("scene state:", JSON.stringify(sceneState));
 
 await page.keyboard.press("Escape");
+await page.waitForTimeout(400);
 await page.screenshot({ path: join(__dirname, "out-excalidraw.png") });
 console.log("saved demos/out-excalidraw.png");
 
