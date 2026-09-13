@@ -39,8 +39,8 @@ receipts, because benchmark posts are usually vibes:
 - limitations section included, xray costs tokens on pages without forms and
   the in-loop diff win under a tight budget is ~27%, not the headline number
 
-full report: <artifact link>
-repo: <github link once pushed>
+full report: https://claude.ai/code/artifact/1ab0a89d-2b5e-4c6a-b975-6a0e7a37083a (share from the page when ready)
+repo: https://github.com/anzal1/fasthands
 
 6/
 built with a team of subagents in one afternoon. cheap model did the grunt
