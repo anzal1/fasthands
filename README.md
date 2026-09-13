@@ -82,6 +82,39 @@ tasks without forms they cost extra (xray total 29,250 tokens vs plain
 fasthands 24,817 across the suite); they pay for themselves only where hidden
 contracts exist. Use `xray` when forms are in play.
 
+## Live: a 4B local model as the brain
+
+The keyless numbers isolate the loop; these are real-model runs — CyberSecQwen-4B
+(a *security*-tuned Qwen3, not an agent model) on Ollama, temperature 0,
+done-review gate on:
+
+| style | success | live obs tokens | note |
+|---|---|---:|---|
+| fulltree (Astra-style) | 2/6 | 6,567 | |
+| **fasthands** | 3/6 | **3,548 (-46%)** | |
+| **fasthands + xray** | 3/6 | 6,221 | wins the info-bound tasks |
+
+The clean result: **the signup validation trap fails without xray and passes
+with it, reproducibly** — same model, same prompt; the only difference is the
+harness reading the HTML contract into the observation. Every booster in the
+loop was built from a real failure in this model's transcripts: the
+scrollbar-in-words header (it never scrolled — nothing said more page
+existed), the done-review gate (it clicked "Order #4670" and certified it as
+#4711), temperature 0 (Ollama's 0.8 default made it dice-roll batches), and a
+depth-scan action parser (it emitted valid JSON, then hallucinated fake
+transcript after it).
+
+Honest boundaries, measured: council mode (parallel proposal voting) helps
+exploration-bound tasks and *hurts* precision-bound ones, so it's opt-in
+(`--council 3` with `FH_TEMPERATURE=0.7`); and the multi-step exploration
+task (find an order three scrolls deep) stays failed at 4B — the harness
+slashes a small model's costs and catches its lies, but does not plan for it.
+
+```bash
+FH_SYSTEM_SUFFIX="/no_think" npm run bench -- --provider compat \
+  --model <your-ollama-model> --base-url http://localhost:11434/v1 --review
+```
+
 ## The drift trap: 0% vs 100% catastrophe
 
 The failure mode Astra's authors themselves admit — state drift between
