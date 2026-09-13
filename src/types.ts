@@ -63,6 +63,14 @@ export type Action =
   | { act: "goto"; url: string }
   | { act: "wait"; ms: number }                      // capped at 3000 by executor
   | { act: "expect"; ref?: string; textContains?: string } // guard: abort batch if unmet
+  /** Click at (x,y) in CSS pixels relative to the ref element's top-left.
+   *  For canvases, WebGL scenes, maps — anything the tree can't target.
+   *  The ref is still drift-guarded before the pointer moves. */
+  | { act: "pointer"; ref: string; x: number; y: number }
+  /** Drag a continuous path (pointerdown → moves → pointerup) with points in
+   *  CSS pixels relative to the ref element's top-left. Drawing, sliders,
+   *  3D orbit. Ref is drift-guarded; path capped at 64 points by executor. */
+  | { act: "stroke"; ref: string; path: { x: number; y: number }[] }
   | { act: "done"; result: string };                 // task complete, report result
 
 export interface StepResult {
@@ -190,3 +198,20 @@ export interface BenchResult {
 //             failed submit (username pattern [a-z0-9_]{5,15}, password
 //             pattern (?=.*\d).{8,}). Success -> h1 "Account created" and
 //             #welcome-code "FH-SIGNUP-77" visible.
+// /whiteboard Canvas drawing app: h1 "Whiteboard", <canvas id="board"
+//             width=600 height=400 aria-label="Drawing board">, button
+//             "Clear board". Pointer events draw 3px black strokes.
+//             App state: window.__strokes = Array<Array<{x,y}>> in canvas
+//             CSS-pixel coords, one array per completed stroke. Task: draw
+//             an X. Verified from __strokes geometry, not pixels.
+// /chart      Canvas bar chart, NO DOM text: 4 bars for Q1-Q4 revenue
+//             (412, 371, 518, 297 $k), each with fillText label
+//             "Q1 $412k" centered 12px above its bar. Clicks hit-test
+//             bars and set <p id="picked"> to the quarter name. Task:
+//             click the highest-revenue quarter's bar -> #picked "Q3".
+// /scene3d    Three.js WebGL scene (three served locally): three named box
+//             meshes "red crate", "blue crate", "green crate" at distinct
+//             positions, fixed camera, ambient+directional light, NO DOM
+//             text naming them. Canvas click raycasts and sets
+//             <p id="hit"> to the hit mesh name. Task: click the red
+//             crate -> #hit "red crate".

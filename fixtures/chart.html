@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quarterly revenue</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 1.5rem;
+      color: #333;
+    }
+    canvas {
+      display: block;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    #picked {
+      margin-top: 1rem;
+      color: #666;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Quarterly revenue</h1>
+    <canvas id="chart" width="640" height="360" aria-label="Revenue chart"></canvas>
+    <p id="picked"></p>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('chart');
+    const ctx = canvas.getContext('2d');
+    const pickedEl = document.getElementById('picked');
+
+    // Data lives only in the canvas drawing — no DOM text carries it, per the
+    // /chart fixture contract (agents must read the pixels, not the DOM).
+    const DATA = [
+      { quarter: 'Q1', value: 412 },
+      { quarter: 'Q2', value: 371 },
+      { quarter: 'Q3', value: 518 },
+      { quarter: 'Q4', value: 297 },
+    ];
+
+    const BASELINE_Y = 300;
+    const MAX_BAR_HEIGHT = 220;
+    const BAR_WIDTH = 70;
+    const SLOT_WIDTH = canvas.width / DATA.length;
+    const MAX_VALUE = Math.max(...DATA.map((d) => d.value));
+
+    // Bar rects, in canvas CSS-pixel coords, kept around for click hit-testing
+    // AND so anything driving this page (tests, agents) can read exact
+    // geometry instead of hardcoding magic numbers.
+    window.__bars = DATA.map((d, i) => {
+      const height = (d.value / MAX_VALUE) * MAX_BAR_HEIGHT;
+      const centerX = SLOT_WIDTH * i + SLOT_WIDTH / 2;
+      return {
+        quarter: d.quarter,
+        value: d.value,
+        x: centerX - BAR_WIDTH / 2,
+        y: BASELINE_Y - height,
+        width: BAR_WIDTH,
+        height,
+      };
+    });
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // baseline axis
+      ctx.strokeStyle = '#333333';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(20, BASELINE_Y + 0.5);
+      ctx.lineTo(canvas.width - 20, BASELINE_Y + 0.5);
+      ctx.stroke();
+
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+
+      for (const bar of window.__bars) {
+        ctx.fillStyle = '#0066cc';
+        ctx.fillRect(bar.x, bar.y, bar.width, bar.height);
+
+        ctx.fillStyle = '#333333';
+        const centerX = bar.x + bar.width / 2;
+        ctx.fillText(`${bar.quarter} $${bar.value}k`, centerX, bar.y - 12);
+      }
+    }
+
+    draw();
+
+    canvas.addEventListener('click', (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+
+      const hit = window.__bars.find(
+        (bar) => x >= bar.x && x <= bar.x + bar.width && y >= bar.y && y <= bar.y + bar.height,
+      );
+
+      pickedEl.textContent = hit ? hit.quarter : 'none';
+    });
+  </script>
+</body>
+</html>

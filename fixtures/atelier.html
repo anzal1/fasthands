@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atelier</title>
+<style>
+  body { font-family: -apple-system, sans-serif; background: #f0eee9; margin: 0; padding: 16px; }
+  .container { max-width: 900px; margin: 0 auto; background: #fff; border-radius: 8px;
+               box-shadow: 0 1px 4px rgba(0,0,0,.12); padding: 20px; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  .controls { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  label { font-size: 14px; display: flex; gap: 6px; align-items: center; }
+  select { font-size: 14px; padding: 2px 4px; }
+  canvas { border: 1px solid #888; background: #F2E9D8; touch-action: none; display: block; }
+  .meta { font-size: 12px; color: #666; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Atelier</h1>
+  <div class="controls">
+    <label>Color
+      <select id="color" aria-label="Color">
+        <option value="#241A12">gallery black</option>
+        <option value="#3A2A1C">dress brown</option>
+        <option value="#4A3A20">sleeve olive</option>
+        <option value="#2E2012">hair dark</option>
+        <option value="#3B2A1A">hair brown</option>
+        <option value="#C8A164" selected>skin base</option>
+        <option value="#8F6B3F">skin shadow</option>
+        <option value="#6E4E2C">skin deep</option>
+        <option value="#E8CFA0">skin light</option>
+        <option value="#B98A5C">blush</option>
+        <option value="#7A4A33">lip umber</option>
+        <option value="#7B8F7B">sky green</option>
+        <option value="#93A48D">sky haze</option>
+        <option value="#6C7F8A">sky blue</option>
+        <option value="#8A6B44">umber land</option>
+        <option value="#5C4023">deep umber</option>
+        <option value="#5E7268">river</option>
+        <option value="#A08050">path ochre</option>
+        <option value="#7E6A4E">bridge stone</option>
+        <option value="#6B6558">veil grey</option>
+        <option value="#F5EFE3">bone white</option>
+      </select>
+    </label>
+    <label>Brush
+      <select id="brush" aria-label="Brush">
+        <option value="2">2</option><option value="4" selected>4</option>
+        <option value="6">6</option><option value="8">8</option>
+        <option value="12">12</option><option value="16">16</option>
+        <option value="24">24</option><option value="32">32</option>
+      </select>
+    </label>
+    <label>Opacity
+      <select id="opacity" aria-label="Opacity">
+        <option value="10">10%</option><option value="20">20%</option>
+        <option value="30">30%</option><option value="40">40%</option>
+        <option value="50">50%</option><option value="60">60%</option>
+        <option value="70">70%</option><option value="80">80%</option>
+        <option value="90">90%</option><option value="100" selected>100%</option>
+      </select>
+    </label>
+    <button id="clear">Clear easel</button>
+  </div>
+  <canvas id="easel" width="480" height="640" aria-label="Easel"></canvas>
+  <p class="meta">strokes: <span id="stroke-count">0</span> · ops: <span id="op-count">0</span></p>
+</div>
+<script>
+  const canvas = document.getElementById("easel");
+  const ctx = canvas.getContext("2d");
+  const colorSel = document.getElementById("color");
+  const brushSel = document.getElementById("brush");
+  const opacitySel = document.getElementById("opacity");
+
+  window.__strokes = [];
+  window.__ops = 0;
+
+  let drawing = false;
+  let path = [];
+
+  function pos(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  function applyStyle() {
+    ctx.strokeStyle = colorSel.value;
+    ctx.lineWidth = Number(brushSel.value);
+    ctx.globalAlpha = Number(opacitySel.value) / 100;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+  }
+  canvas.addEventListener("pointerdown", (e) => {
+    drawing = true;
+    canvas.setPointerCapture(e.pointerId);
+    path = [pos(e)];
+    applyStyle();
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    // a dot for zero-length strokes
+    ctx.lineTo(path[0].x + 0.01, path[0].y);
+    ctx.stroke();
+    window.__ops++;
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!drawing) return;
+    const p = pos(e);
+    path.push(p);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    window.__ops++;
+  });
+  canvas.addEventListener("pointerup", () => {
+    if (!drawing) return;
+    drawing = false;
+    window.__strokes.push(path);
+    document.getElementById("stroke-count").textContent = window.__strokes.length;
+    document.getElementById("op-count").textContent = window.__ops;
+  });
+  document.getElementById("clear").addEventListener("click", () => {
+    ctx.save(); ctx.globalAlpha = 1;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    window.__strokes = [];
+    window.__ops = 0;
+    document.getElementById("stroke-count").textContent = "0";
+    document.getElementById("op-count").textContent = "0";
+  });
+</script>
+</body>
+</html>

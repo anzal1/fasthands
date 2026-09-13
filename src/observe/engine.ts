@@ -212,6 +212,8 @@ function walkPage(args: WalkArgs): RawSnapshotResult {
         return "form";
       case "TABLE":
         return "table";
+      case "CANVAS":
+        return "canvas";
       default:
         return null;
     }
@@ -292,6 +294,15 @@ function walkPage(args: WalkArgs): RawSnapshotResult {
   }
 
   function getValue(el: any, role: string): string | undefined {
+    if (role === "canvas") {
+      // Canvases carry no textual value of their own; surface their
+      // CSS-pixel size ("WxH") as the node's `value` so the model can see
+      // dimensions without ever touching pixels. Use the rendered box size
+      // (not the width/height content attributes, which are backing-store
+      // pixels and can diverge from CSS size under devicePixelRatio).
+      const r = el.getBoundingClientRect();
+      return `${Math.round(r.width)}x${Math.round(r.height)}`;
+    }
     if (el.tagName === "SELECT") {
       const opt = el.selectedOptions && el.selectedOptions[0];
       return opt ? opt.text : el.value;
@@ -343,19 +354,26 @@ function walkPage(args: WalkArgs): RawSnapshotResult {
     if (isHiddenStyle(el)) return [];
 
     let role = getRole(el);
+    // Canvas is always surfaced as its own node — never flattened, never
+    // reclassified as "text" — because once painting starts, its DOM
+    // children (fallback content, if any) no longer describe what's
+    // visible. It's kept purely so the tap/pixel modules have a ref to key
+    // off of; its "value" carries WxH instead of text (see getValue()).
+    const isCanvas = role === "canvas";
     const interactive = isInteractive(el, role);
     const structural = isStructural(el, role);
     const leafText =
       !interactive &&
       !structural &&
+      !isCanvas &&
       el.childElementCount === 0 &&
       textOf(el).length > 0;
 
-    const kept = interactive || structural || leafText;
+    const kept = interactive || structural || leafText || isCanvas;
     if (leafText) role = "text";
 
     let childNodes: any[] = [];
-    if (!leafText) {
+    if (!leafText && !isCanvas) {
       for (const child of el.children) {
         childNodes = childNodes.concat(build(child));
       }
@@ -799,15 +817,18 @@ export function createObservationEngine(page: Page): ObservationEngine {
               return "form";
             case "TABLE":
               return "table";
+            case "CANVAS":
+              return "canvas";
             default:
               return null;
           }
         }
         const explicit = el.getAttribute("role");
         const role = explicit && explicit.trim() ? explicit.trim().split(/\s+/)[0] : implicitRole(el) || el.tagName.toLowerCase();
+        const isCanvas = role === "canvas";
         const isInteractive = INTERACTIVE_ROLES_LOCAL.has(role) || el.hasAttribute("onclick");
-        const isLeafText = !isInteractive && el.childElementCount === 0;
-        const effectiveRole = isLeafText && role !== "text" ? "text" : role;
+        const isLeafText = !isCanvas && !isInteractive && el.childElementCount === 0;
+        const effectiveRole = isCanvas ? role : isLeafText && role !== "text" ? "text" : role;
 
         function textOf(e: any): string {
           const t = e.innerText !== undefined ? e.innerText : e.textContent;
@@ -852,7 +873,10 @@ export function createObservationEngine(page: Page): ObservationEngine {
         }
         const name = computeName(el);
         let value: string | undefined;
-        if (el.tagName === "SELECT") {
+        if (isCanvas) {
+          const r = el.getBoundingClientRect();
+          value = `${Math.round(r.width)}x${Math.round(r.height)}`;
+        } else if (el.tagName === "SELECT") {
           const opt = el.selectedOptions && el.selectedOptions[0];
           value = opt ? opt.text : el.value;
         } else if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {

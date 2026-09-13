@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Whiteboard</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 1.5rem;
+      color: #333;
+    }
+    canvas {
+      display: block;
+      border: 1px solid #888;
+      touch-action: none;
+    }
+    .button-group {
+      margin-top: 1.5rem;
+    }
+    button {
+      padding: 0.75rem 1.5rem;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #0052a3;
+    }
+    button:active {
+      background: #003d7a;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Whiteboard</h1>
+    <canvas id="board" width="600" height="400" aria-label="Drawing board" style="border:1px solid #888; touch-action:none"></canvas>
+    <div class="button-group">
+      <button id="clearButton">Clear board</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('board');
+    const ctx = canvas.getContext('2d');
+    const clearButton = document.getElementById('clearButton');
+
+    // ?pen=fine switches to a delicate 1px translucent pen: overlapping
+    // hatch strokes accumulate tone, like graphite. Default stays 3px black
+    // (the benchmark and tests depend on it).
+    const finePen = new URLSearchParams(location.search).get('pen') === 'fine';
+    ctx.lineWidth = finePen ? 1 : 3;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = finePen ? 'rgba(25, 25, 35, 0.32)' : '#000000';
+
+    window.__strokes = [];
+
+    let drawing = false;
+    let currentStroke = null;
+
+    function pointFromEvent(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      };
+    }
+
+    canvas.addEventListener('pointerdown', (event) => {
+      canvas.setPointerCapture(event.pointerId);
+      drawing = true;
+      currentStroke = [];
+      const p = pointFromEvent(event);
+      currentStroke.push(p);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+    });
+
+    canvas.addEventListener('pointermove', (event) => {
+      if (!drawing) return;
+      const p = pointFromEvent(event);
+      currentStroke.push(p);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    });
+
+    function endStroke(event) {
+      if (!drawing) return;
+      drawing = false;
+      if (canvas.hasPointerCapture(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId);
+      }
+      if (currentStroke && currentStroke.length > 0) {
+        window.__strokes.push(currentStroke);
+      }
+      currentStroke = null;
+    }
+
+    canvas.addEventListener('pointerup', endStroke);
+    canvas.addEventListener('pointercancel', endStroke);
+
+    clearButton.addEventListener('click', () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      window.__strokes = [];
+    });
+  </script>
+</body>
+</html>

@@ -21,10 +21,33 @@ const ROUTES: Record<string, string> = {
   "/signup": "signup.html",
   "/noise": "noise.html",
   "/drift": "drift.html",
+  "/atelier": "atelier.html",
+  "/scene3d": "scene3d.html",
+  "/whiteboard": "whiteboard.html",
+  "/chart": "chart.html",
 };
+
+const THREE_BUILD_DIR = join(__dirname, "..", "..", "node_modules", "three", "build");
+// three.module.js (r150+) is a thin wrapper that imports './three.core.js';
+// both must be servable from the same origin for the ESM import to resolve
+// in-browser with no bundler.
+const THREE_FILES = new Set(["/three.module.js", "/three.core.js"]);
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+
+  if (THREE_FILES.has(pathname)) {
+    try {
+      const js = await readFile(join(THREE_BUILD_DIR, pathname.slice(1)));
+      res.writeHead(200, { "content-type": "text/javascript" });
+      res.end(js);
+    } catch (err) {
+      res.writeHead(500, { "content-type": "text/plain" });
+      res.end(`error loading ${pathname}: ${(err as Error).message}`);
+    }
+    return;
+  }
+
   const file = ROUTES[pathname];
 
   if (!file) {

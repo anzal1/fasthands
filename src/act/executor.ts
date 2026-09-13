@@ -17,9 +17,46 @@ const ACTION_TIMEOUT_MS = 5000;
 const DEFAULT_SCROLL_AMOUNT = 600;
 const SETTLE_DELAY_MS = 150;
 const SETTLE_CAP_MS = 2000;
+const ANIMATION_SETTLE_CAP_MS = 800;
+/** Pixels of slack allowed outside an element's box before a pointer/stroke
+ *  coordinate is rejected. A hair over the edge (rounding, sub-pixel layout)
+ *  shouldn't fail a step; a coordinate that's actually off the element should. */
+const BOUNDS_TOLERANCE_PX = 2;
+/** Hard cap on stroke path length — a runaway path is a model error, not
+ *  something the executor should spend minutes replaying. */
+const MAX_STROKE_POINTS = 64;
+
+// ---------------------------------------------------------------------------
+// Ambient shim so this file typechecks without a "dom" lib entry (we can't
+// touch tsconfig.json, which is out of scope). This identifier only ever runs
+// inside page.evaluate() callbacks, i.e. in the browser realm — never in the
+// Node realm this file is compiled/stripped in. `declare const` emits no
+// runtime code, so this is purely a type-level fix. Mirrors the same shim in
+// src/observe/engine.ts.
+// ---------------------------------------------------------------------------
+declare const document: any;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** True when (x,y) — in the element's own local coordinate space — falls
+ *  inside its box, plus a small tolerance. Shared by "pointer" and "stroke"
+ *  so both actions reject out-of-bounds coordinates the same way. */
+function inBounds(x: number, y: number, box: Box, tolerance = BOUNDS_TOLERANCE_PX): boolean {
+  return (
+    x >= -tolerance &&
+    y >= -tolerance &&
+    x <= box.width + tolerance &&
+    y <= box.height + tolerance
+  );
 }
 
 /** Race a promise against a hard timeout, throwing on expiry. */
@@ -41,13 +78,48 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 
 /** After a click/goto, wait briefly for the page to settle so the next
  *  observation isn't captured mid-transition. Capped at 2s total; never
- *  throws (a page that never reaches domcontentloaded just times out). */
+ *  throws (a page that never reaches domcontentloaded just times out).
+ *
+ *  Also awaits finite CSS/Web Animations (capped at 800ms): the browser
+ *  itself knows when motion has settled via document.getAnimations(), which
+ *  beats sleeping a fixed number of ms — a fixed sleep either wastes idle
+ *  time waiting past when things actually finished, or under-waits and hands
+ *  the next observe() a page still mid-transition (wrong refs/hashes
+ *  captured while an element is still moving). Infinite animations
+ *  (spinners, indefinite pulses) are excluded, or we'd wait forever for
+ *  something that never finishes. Guarded so pages without a real
+ *  `evaluate` (e.g. the FakePage used by smoke tests) just skip this step. */
 async function settle(page: Page): Promise<void> {
   await Promise.race([
     page.waitForLoadState("domcontentloaded").catch(() => undefined),
     sleep(SETTLE_CAP_MS),
   ]);
   await sleep(SETTLE_DELAY_MS);
+
+  const awaitAnimations = async (): Promise<void> => {
+    try {
+      await page.evaluate(() =>
+        Promise.all(
+          document
+            .getAnimations()
+            .filter((a: any) => {
+              try {
+                const t = a.effect?.getTiming?.();
+                return t && t.iterations !== Infinity;
+              } catch {
+                return false;
+              }
+            })
+            .map((a: any) => a.finished.catch(() => {})),
+        ),
+      );
+    } catch {
+      // No real `evaluate` (fake pages in smoke tests) or animations API
+      // unavailable — settle() degrades to the wait above.
+    }
+  };
+
+  await Promise.race([awaitAnimations(), sleep(ANIMATION_SETTLE_CAP_MS)]);
 }
 
 /** Resolve a ref via the engine. When `guards` is true (the default, safe
@@ -174,6 +246,122 @@ export function createExecutor(
                 "select",
               );
             }
+            steps.push({ action, ok: true });
+            break;
+          }
+
+          case "pointer": {
+            const resolved = await resolveGuarded(engine, action.ref, guards);
+            if ("error" in resolved) {
+              steps.push({ action, ok: false, error: resolved.error, driftDetected: true });
+              return { steps, completed: false, abortedAt: i, done: doneResult };
+            }
+            const handle = resolved.node.handle as {
+              boundingBox: () => Promise<Box | null>;
+            };
+            const box = await withTimeout(
+              handle.boundingBox(),
+              ACTION_TIMEOUT_MS,
+              "pointer boundingBox",
+            );
+            if (box === null) {
+              steps.push({
+                action,
+                ok: false,
+                error: `pointer: ref ${action.ref} has no layout box`,
+              });
+              return { steps, completed: false, abortedAt: i, done: doneResult };
+            }
+            // An out-of-bounds pointer is a model error, not something to fire
+            // blind — reject rather than clicking wherever that lands.
+            if (!inBounds(action.x, action.y, box)) {
+              steps.push({
+                action,
+                ok: false,
+                error: `pointer: (${action.x},${action.y}) outside ${action.ref}'s ${box.width}x${box.height} box`,
+              });
+              return { steps, completed: false, abortedAt: i, done: doneResult };
+            }
+            const absX = box.x + action.x;
+            const absY = box.y + action.y;
+            await withTimeout(page.mouse.click(absX, absY), ACTION_TIMEOUT_MS, "pointer");
+            await settle(page);
+            steps.push({ action, ok: true });
+            break;
+          }
+
+          case "stroke": {
+            const resolved = await resolveGuarded(engine, action.ref, guards);
+            if ("error" in resolved) {
+              steps.push({ action, ok: false, error: resolved.error, driftDetected: true });
+              return { steps, completed: false, abortedAt: i, done: doneResult };
+            }
+            const handle = resolved.node.handle as {
+              boundingBox: () => Promise<Box | null>;
+            };
+            const box = await withTimeout(
+              handle.boundingBox(),
+              ACTION_TIMEOUT_MS,
+              "stroke boundingBox",
+            );
+            if (box === null) {
+              steps.push({
+                action,
+                ok: false,
+                error: `stroke: ref ${action.ref} has no layout box`,
+              });
+              return { steps, completed: false, abortedAt: i, done: doneResult };
+            }
+            if (action.path.length > MAX_STROKE_POINTS) {
+              steps.push({
+                action,
+                ok: false,
+                error: `stroke: path exceeds ${MAX_STROKE_POINTS} points`,
+              });
+              return { steps, completed: false, abortedAt: i, done: doneResult };
+            }
+            if (action.path.length < 2) {
+              steps.push({
+                action,
+                ok: false,
+                error: "stroke: path requires at least 2 points",
+              });
+              return { steps, completed: false, abortedAt: i, done: doneResult };
+            }
+            const outOfBounds = action.path.find((p) => !inBounds(p.x, p.y, box));
+            if (outOfBounds) {
+              steps.push({
+                action,
+                ok: false,
+                error: `stroke: (${outOfBounds.x},${outOfBounds.y}) outside ${action.ref}'s ${box.width}x${box.height} box`,
+              });
+              return { steps, completed: false, abortedAt: i, done: doneResult };
+            }
+            const [first, ...rest] = action.path;
+            await withTimeout(
+              page.mouse.move(box.x + first.x, box.y + first.y),
+              ACTION_TIMEOUT_MS,
+              "stroke move",
+            );
+            await withTimeout(page.mouse.down(), ACTION_TIMEOUT_MS, "stroke down");
+            // Interpolation is for SPARSE paths (a 2-point drag needs
+            // intermediate moves so apps see a continuous gesture). A dense
+            // path already carries its own curvature — interpolating every
+            // segment 4x just multiplies CDP round-trips.
+            const moveSteps = action.path.length > 2 ? 1 : 4;
+            for (const point of rest) {
+              await withTimeout(
+                page.mouse.move(box.x + point.x, box.y + point.y, { steps: moveSteps }),
+                ACTION_TIMEOUT_MS,
+                "stroke move",
+              );
+            }
+            await withTimeout(page.mouse.up(), ACTION_TIMEOUT_MS, "stroke up");
+            // No settle() here: strokes draw, they don't navigate, and
+            // stroke-heavy workloads (hatching, handwriting) run thousands
+            // per task — a per-stroke settle delay would dominate wall clock.
+            // A stroke that does mutate the page is caught by the next
+            // observation like any other change.
             steps.push({ action, ok: true });
             break;
           }

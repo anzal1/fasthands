@@ -16,6 +16,13 @@ import type {
 } from "../types.ts";
 import type { Xray } from "../xray/xray.ts";
 
+/** A sense augments observations with a domain-specific annotation block —
+ *  canvas command streams, 3D scene projections, pixel diffs. Annotation
+ *  tokens are counted toward observationTokens like everything else. */
+export interface Sense {
+  annotate(): Promise<{ text: string; approxTokens: number; count: number }>;
+}
+
 const REPROMPT_TEXT =
   "Your last reply was not valid JSON. Reply with ONLY a JSON array of actions.";
 

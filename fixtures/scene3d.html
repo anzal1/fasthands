@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Warehouse</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 1.5rem;
+      color: #333;
+    }
+    canvas {
+      display: block;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    #hit {
+      margin-top: 1rem;
+      color: #666;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Warehouse</h1>
+    <canvas id="stage" width="640" height="420" aria-label="3D warehouse"></canvas>
+    <p id="hit"></p>
+  </div>
+
+  <script type="module">
+    import * as THREE from "/three.module.js";
+
+    const canvas = document.getElementById("stage");
+    const hitEl = document.getElementById("hit");
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xeef0f3);
+
+    const camera = new THREE.PerspectiveCamera(50, 640 / 420, 0.1, 100);
+    camera.position.set(0, 1.2, 5.5);
+    camera.lookAt(0, 0, 0);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambient);
+
+    const directional = new THREE.DirectionalLight(0xffffff, 0.8);
+    directional.position.set(3, 5, 4);
+    scene.add(directional);
+
+    const crates = [
+      { name: "red crate", color: 0xff4444, position: [-1.6, 0, 0] },
+      { name: "blue crate", color: 0x4466ff, position: [0.2, 0.9, -1.4] },
+      { name: "green crate", color: 0x44bb66, position: [1.7, -0.5, 0.6] },
+    ];
+
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    for (const c of crates) {
+      const material = new THREE.MeshStandardMaterial({ color: c.color });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.name = c.name;
+      mesh.position.set(c.position[0], c.position[1], c.position[2]);
+      scene.add(mesh);
+    }
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(1);
+    renderer.setSize(640, 420, false);
+
+    function render() {
+      renderer.render(scene, camera);
+    }
+    render();
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+
+    canvas.addEventListener("click", (event) => {
+      const rect = canvas.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(pointer, camera);
+      const intersects = raycaster.intersectObjects(scene.children, false);
+
+      if (intersects.length > 0) {
+        hitEl.textContent = intersects[0].object.name || "nothing";
+      } else {
+        hitEl.textContent = "nothing";
+      }
+      render();
+    });
+
+    window.__scene = scene;
+    window.__camera = camera;
+    window.__renderer = renderer;
+  </script>
+</body>
+</html>
