@@ -29,7 +29,17 @@ export function createOpenAIStyleProvider(
     async complete(messages: ChatMessage[]) {
       const body = {
         model,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        // FH_SYSTEM_SUFFIX lets a runner append model-specific control tokens
+        // to the system prompt without touching the loop — e.g. "/no_think"
+        // switches Qwen3-family local models out of chain-of-thought mode,
+        // which triples their speed on action emission.
+        messages: messages.map((m) => ({
+          role: m.role,
+          content:
+            m.role === "system" && process.env.FH_SYSTEM_SUFFIX
+              ? `${m.content}\n${process.env.FH_SYSTEM_SUFFIX}`
+              : m.content,
+        })),
       };
 
       const headers: Record<string, string> = {};

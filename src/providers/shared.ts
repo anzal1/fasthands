@@ -11,13 +11,37 @@ function stripFences(text: string): string {
     .trim();
 }
 
-/** Slice from the first '[' to the last ']' — the model is instructed to
- *  reply with ONLY a JSON array, but some models wrap it in prose anyway. */
+/** Reasoning models wrap chain-of-thought in <think>...</think> (sometimes
+ *  unclosed when generation is cut) — strip it before hunting for JSON. */
+function stripThinkBlocks(text: string): string {
+  return text.replace(/<think>[\s\S]*?(<\/think>|$)/gi, "");
+}
+
+/** Extract the FIRST complete JSON array by bracket-depth scan (string- and
+ *  escape-aware). First-'['-to-last-']' slicing breaks on small local models
+ *  that emit a valid array and then keep hallucinating transcript after it. */
 function extractArraySlice(text: string): string | null {
   const start = text.indexOf("[");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escaped) { escaped = false; continue; }
+    if (ch === "\\") { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "[") depth++;
+    else if (ch === "]") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  // Unterminated array (generation cut off): fall back to the old slice so
+  // the trailing-comma repair still gets a chance.
   const end = text.lastIndexOf("]");
-  if (start === -1 || end === -1 || end < start) return null;
-  return text.slice(start, end + 1);
+  return end > start ? text.slice(start, end + 1) : null;
 }
 
 /** Remove trailing commas before ] or } — the one "repair" we attempt.
@@ -68,7 +92,7 @@ function isValidAction(candidate: unknown): candidate is Action {
  *  parse a JSON array, returns an empty list so the agent loop can re-prompt.
  *  Invalid-shaped entries within an otherwise-valid array are dropped. */
 export function parseActions(rawText: string): Action[] {
-  const stripped = stripFences(rawText);
+  const stripped = stripFences(stripThinkBlocks(rawText));
   const slice = extractArraySlice(stripped);
   if (slice === null) return [];
 

@@ -99,7 +99,14 @@ Every element must be one of:
   {"act": "wait", "ms": 500}
   {"act": "expect", "ref": "e20"}
   {"act": "expect", "textContains": "Order placed"}
+  {"act": "pointer", "ref": "e14", "x": 312, "y": 180}
+  {"act": "stroke", "ref": "e14", "path": [{"x":50,"y":50},{"x":120,"y":90}]}
   {"act": "done", "result": "Booked table for 3 at 7pm, confirmation ABC123"}
+
+pointer clicks at coordinates in CSS pixels RELATIVE to the ref element's
+top-left corner — for canvases, maps, 3D scenes and anything the tree can't
+target directly. stroke drags a continuous path the same way (max 64 points).
+Out-of-bounds coordinates are rejected before anything fires.
 
 ## Rules
 
@@ -180,6 +187,10 @@ export async function runAgent(opts: {
    *  rules and predicted consequences. Annotation tokens are counted toward
    *  observationTokens so benchmark wins survive their own cost. */
   xray?: Xray;
+  /** Optional extra senses (canvas tap, 3D scene introspection, pixel diff).
+   *  Each contributes an annotation block to the observation; their tokens
+   *  are counted toward observationTokens like everything else. */
+  senses?: Sense[];
 }): Promise<RunResult> {
   const { engine, executor, brain, task, config, xray } = opts;
 
@@ -208,6 +219,19 @@ export async function runAgent(opts: {
       if (annotations.count > 0) {
         observation.text += `\n\n${annotations.text}`;
         observation.approxTokens += annotations.approxTokens;
+      }
+    }
+
+    for (const sense of opts.senses ?? []) {
+      try {
+        const a = await sense.annotate();
+        if (a.count > 0) {
+          observation.text += `\n\n${a.text}`;
+          observation.approxTokens += a.approxTokens;
+        }
+      } catch {
+        // A sense that fails this turn (tainted canvas, no scene yet) just
+        // contributes nothing; the base observation stands on its own.
       }
     }
 

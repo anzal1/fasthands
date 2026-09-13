@@ -56,6 +56,8 @@ interface CliArgs {
   model?: string;
   baseUrl?: string;
   repeat: number;
+  styles?: LoopStyle[];
+  tasks?: string[];
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -65,6 +67,8 @@ function parseArgs(argv: string[]): CliArgs {
     else if (argv[i] === "--model") args.model = argv[++i];
     else if (argv[i] === "--base-url") args.baseUrl = argv[++i];
     else if (argv[i] === "--repeat") args.repeat = Math.max(1, Number(argv[++i]) || 1);
+    else if (argv[i] === "--styles") args.styles = argv[++i].split(",") as LoopStyle[];
+    else if (argv[i] === "--tasks") args.tasks = argv[++i].split(",");
   }
   return args;
 }
@@ -376,11 +380,13 @@ async function main(): Promise<void> {
   const browser = await chromium.launch({ headless: true });
   const results: BenchResult[] = [];
 
+  const runTasks = args.tasks ? tasks.filter((t) => args.tasks!.includes(t.id)) : tasks;
+  const runStyles = args.styles ?? STYLES;
   try {
     for (let rep = 1; rep <= args.repeat; rep++) {
       if (args.repeat > 1) console.log(`--- repetition ${rep}/${args.repeat} ---`);
-      for (const task of tasks) {
-        for (const style of STYLES) {
+      for (const task of runTasks) {
+        for (const style of runStyles) {
           const result = await runOne(browser, task.id, task.description, task.fixturePath, style, makeBrain);
           results.push(result);
         }
