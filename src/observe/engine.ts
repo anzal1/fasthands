@@ -78,6 +78,7 @@ interface RawSnapshotResult {
   title: string;
   tree: RawNode;
   nextCounter: number;
+  scroll: { y: number; viewportH: number; docH: number };
 }
 
 interface WalkArgs {
@@ -442,6 +443,11 @@ function walkPage(args: WalkArgs): RawSnapshotResult {
     title: document.title,
     tree: clean(root),
     nextCounter: counter,
+    scroll: {
+      y: Math.round(window.scrollY),
+      viewportH: Math.round(window.innerHeight),
+      docH: Math.round(document.documentElement.scrollHeight),
+    },
   };
 }
 
@@ -475,12 +481,24 @@ function serializeNodes(nodes: RawNode[], depth: number, out: string[]): void {
   }
 }
 
-function header(url: string, title: string): string[] {
-  return [`url: ${url}`, `title: ${title}`, ""];
+function header(url: string, title: string, scroll?: RawSnapshotResult["scroll"]): string[] {
+  const lines = [`url: ${url}`, `title: ${title}`];
+  // The scrollbar, in words: every page knows its own scroll extent, and no
+  // observation format surfaces it — so models never realize more content
+  // exists below the fold. Say it explicitly when the page is scrollable.
+  if (scroll && scroll.docH > scroll.viewportH * 1.02) {
+    const seenTo = Math.min(100, Math.round(((scroll.y + scroll.viewportH) / scroll.docH) * 100));
+    lines.push(
+      `scroll: viewing ${scroll.y}-${scroll.y + scroll.viewportH} of ${scroll.docH}px` +
+        (seenTo < 100 ? ` — ${100 - seenTo}% of the page is below, scroll down to reveal` : " (at bottom)"),
+    );
+  }
+  lines.push("");
+  return lines;
 }
 
 function serializeFull(raw: RawSnapshotResult, roots: RawNode[]): string {
-  const lines = header(raw.url, raw.title);
+  const lines = header(raw.url, raw.title, raw.scroll);
   serializeNodes(roots, 0, lines);
   return lines.join("\n");
 }
@@ -530,14 +548,14 @@ function fitFullToBudget(raw: RawSnapshotResult, roots: RawNode[], budget: numbe
 
   const c2 = { n: 0 };
   pruned = pruneList(pruned, (n) => !n.inViewport, c2);
-  let lines = header(raw.url, raw.title);
+  let lines = header(raw.url, raw.title, raw.scroll);
   serializeNodes(pruned, 0, lines);
   if (c2.n > 0) lines.push(`… ${c2.n} offscreen nodes omitted; scroll to reveal`);
   text = lines.join("\n");
   if (approxTokens(text) <= budget) return text;
 
   pruned = truncateNames(pruned, 40);
-  lines = header(raw.url, raw.title);
+  lines = header(raw.url, raw.title, raw.scroll);
   serializeNodes(pruned, 0, lines);
   if (c2.n > 0) lines.push(`… ${c2.n} offscreen nodes omitted; scroll to reveal`);
   return lines.join("\n");
@@ -598,7 +616,7 @@ function serializeDiff(
   let removed = diff.removed;
 
   const render = (): string => {
-    const lines = header(raw.url, raw.title);
+    const lines = header(raw.url, raw.title, raw.scroll);
     lines.push(
       `${changed.length} changed, ${topLevelAddedCount(topLevelAdded)} added, ${removed.length} removed (of ${nodeCount} nodes)`,
     );

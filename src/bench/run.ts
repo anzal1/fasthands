@@ -58,6 +58,8 @@ interface CliArgs {
   repeat: number;
   styles?: LoopStyle[];
   tasks?: string[];
+  council?: number;
+  review?: boolean;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -69,6 +71,8 @@ function parseArgs(argv: string[]): CliArgs {
     else if (argv[i] === "--repeat") args.repeat = Math.max(1, Number(argv[++i]) || 1);
     else if (argv[i] === "--styles") args.styles = argv[++i].split(",") as LoopStyle[];
     else if (argv[i] === "--tasks") args.tasks = argv[++i].split(",");
+    else if (argv[i] === "--council") args.council = Math.max(2, Number(argv[++i]) || 3);
+    else if (argv[i] === "--review") args.review = true;
   }
   return args;
 }
@@ -139,10 +143,12 @@ async function runOne(
   fixturePath: string,
   style: LoopStyle,
   makeBrain: () => Provider | OraclePolicy,
+  councilK?: number,
+  reviewDone?: boolean,
 ): Promise<BenchResult> {
   const context = await browser.newContext();
   const page: Page = await context.newPage();
-  const config = STYLE_CONFIGS[style];
+  const config = reviewDone ? { ...STYLE_CONFIGS[style], reviewDone: true } : STYLE_CONFIGS[style];
 
   let run: RunResult;
   try {
@@ -163,6 +169,7 @@ async function runOne(
         task: { id: taskId, description },
         config,
         xray,
+        council: councilK,
       });
     } catch (err) {
       console.error(`runAgent threw for ${taskId}/${style}:`, err);
@@ -387,7 +394,9 @@ async function main(): Promise<void> {
       if (args.repeat > 1) console.log(`--- repetition ${rep}/${args.repeat} ---`);
       for (const task of runTasks) {
         for (const style of runStyles) {
-          const result = await runOne(browser, task.id, task.description, task.fixturePath, style, makeBrain);
+          const result = await runOne(
+            browser, task.id, task.description, task.fixturePath, style, makeBrain, args.council, args.review,
+          );
           results.push(result);
         }
       }

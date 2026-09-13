@@ -29,6 +29,12 @@ export function createOpenAIStyleProvider(
     async complete(messages: ChatMessage[]) {
       const body = {
         model,
+        // Deterministic action emission by default: an agent loop wants the
+        // argmax policy, not samples — local runtimes (Ollama) default to
+        // ~0.8, which makes small models roll dice on every batch. Council
+        // mode overrides via FH_TEMPERATURE to get proposal diversity.
+        temperature: process.env.FH_TEMPERATURE ? Number(process.env.FH_TEMPERATURE) : 0,
+        max_tokens: 2048,
         // FH_SYSTEM_SUFFIX lets a runner append model-specific control tokens
         // to the system prompt without touching the loop — e.g. "/no_think"
         // switches Qwen3-family local models out of chain-of-thought mode,

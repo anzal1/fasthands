@@ -15,6 +15,7 @@ import type {
   TurnLog,
 } from "../types.ts";
 import type { Xray } from "../xray/xray.ts";
+import { council } from "./council.ts";
 
 /** A sense augments observations with a domain-specific annotation block —
  *  canvas command streams, 3D scene projections, pixel diffs. Annotation
@@ -127,6 +128,18 @@ Out-of-bounds coordinates are rejected before anything fires.
 - If you are unsure what changed, prefer a small batch (or a single
   "expect") over a large one — cheaper to recover from a drift abort on a
   short batch than a long one.
+- If the item you need is NOT in the observation, it is not on screen yet:
+  scroll or navigate until it appears. NEVER act on a similar-looking
+  substitute — "Order #4670" is not "Order #4711".
+- Checkboxes, radios, and switches are toggled with "click". "select" is
+  only for dropdown <select> elements.
+- If a batch aborts, the error message tells you the exact failing step. Fix
+  that step and continue the task. A failure is never a reason to emit done.
+- done is a claim about the CURRENT page, not about your effort: only emit it
+  when the observation in front of you already shows the goal state, and pair
+  it with an expect that quotes that exact evidence.
+- A scroll ends your batch: content revealed by scrolling only exists in the
+  NEXT observation, so scroll, stop, and look before acting on anything new.
 ${xrayEnabled ? XRAY_PROMPT_SECTION : ""}
 ## Task
 
@@ -191,6 +204,10 @@ export async function runAgent(opts: {
    *  Each contributes an annotation block to the observation; their tokens
    *  are counted toward observationTokens like everything else. */
   senses?: Sense[];
+  /** Council mode: sample this many proposals per turn in parallel and take
+   *  the one whose refs all resolve and whose guard discipline scores best.
+   *  Lifts small models; needs sampling diversity (set FH_TEMPERATURE > 0). */
+  council?: number;
 }): Promise<RunResult> {
   const { engine, executor, brain, task, config, xray } = opts;
 
@@ -202,6 +219,7 @@ export async function runAgent(opts: {
   let success = false;
   let finalResult: string | undefined;
   let pendingNote: string | undefined;
+  let doneReviewed = false;
 
   for (let turn = 1; turn <= config.maxTurns; turn++) {
     const turnStart = Date.now();
@@ -241,6 +259,15 @@ export async function runAgent(opts: {
     let actions: Action[];
     if (isOraclePolicy(brain)) {
       actions = brain.nextActions(task.id, turn, observation);
+    } else if (opts.council && opts.council > 1) {
+      const verdict = await council(brain, history, observation.snapshot, opts.council);
+      if (verdict.actions.length > 0) {
+        history.push({ role: "assistant", content: verdict.rawTexts[verdict.winner] ?? "" });
+        actions = verdict.actions;
+      } else {
+        const got = await getActionsFromProvider(brain, history);
+        actions = got.actions;
+      }
     } else {
       const got = await getActionsFromProvider(brain, history);
       actions = got.actions;
@@ -255,6 +282,29 @@ export async function runAgent(opts: {
     if (actions.length > 0) {
       const batchResult = await executor.runBatch(actions);
       actionsCompleted = batchResult.steps.filter((s) => s.ok).length;
+
+      if (batchResult.done !== undefined && config.reviewDone && !isOraclePolicy(brain) && !doneReviewed) {
+        // Done-review gate: don't accept the first done — bounce it back
+        // against a fresh observation with the task text. A model that was
+        // right re-affirms for one extra turn; a model that hallucinated
+        // completion gets confronted with the contradiction instead of
+        // silently failing the task.
+        doneReviewed = true;
+        pendingNote =
+          `REVIEW before finishing. The task is: "${task.description}". ` +
+          `You claimed: "${batchResult.done}". Check the observation below carefully: ` +
+          `if the goal is not ACTUALLY visible on the page, keep working on the task; ` +
+          `only emit done again if the goal is truly achieved.`;
+        turnLogs.push({
+          turn,
+          observationTokens: observation.approxTokens,
+          observationKind: observation.kind,
+          actionsPlanned: actions.length,
+          actionsCompleted,
+          wallMs: Date.now() - turnStart,
+        });
+        continue;
+      }
 
       if (batchResult.done !== undefined) {
         success = true;
@@ -287,6 +337,18 @@ export async function runAgent(opts: {
       actionsCompleted,
       wallMs: Date.now() - turnStart,
     });
+  }
+
+  // FH_DEBUG_DIR: dump the full conversation per run for postmortems on
+  // live-model behavior. Off unless the env var is set.
+  if (process.env.FH_DEBUG_DIR) {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    mkdirSync(process.env.FH_DEBUG_DIR, { recursive: true });
+    const name = `${task.id}-b${config.batching ? 1 : 0}d${config.diffing ? 1 : 0}${xray ? "x" : ""}.json`;
+    writeFileSync(
+      `${process.env.FH_DEBUG_DIR}/${name}`,
+      JSON.stringify({ success, turns: turnLogs.length, history }, null, 1),
+    );
   }
 
   const totalObservationTokens = turnLogs.reduce((sum, t) => sum + t.observationTokens, 0);

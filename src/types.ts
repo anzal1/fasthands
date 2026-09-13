@@ -128,6 +128,11 @@ export interface AgentConfig {
   observationBudget: number; // default 2000 approx tokens
   batching: boolean;      // false = one action per turn (baseline mode)
   diffing: boolean;       // false = full tree every turn (Astra-style baseline)
+  /** Done-review gate for live models: the first done is discarded and
+   *  bounced back with the task text against a fresh observation; only a
+   *  re-affirmed done finishes the run. Makes hallucinated completion cost
+   *  a contradiction instead of a benchmark failure. Ignored for oracles. */
+  reviewDone?: boolean;
 }
 
 export interface TurnLog {
