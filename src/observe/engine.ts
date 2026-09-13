@@ -490,7 +490,7 @@ function header(url: string, title: string, scroll?: RawSnapshotResult["scroll"]
     const seenTo = Math.min(100, Math.round(((scroll.y + scroll.viewportH) / scroll.docH) * 100));
     lines.push(
       `scroll: viewing ${scroll.y}-${scroll.y + scroll.viewportH} of ${scroll.docH}px` +
-        (seenTo < 100 ? ` — ${100 - seenTo}% of the page is below, scroll down to reveal` : " (at bottom)"),
+        (seenTo < 100 ? `, ${100 - seenTo}% of the page is below, scroll down to reveal` : " (at bottom)"),
     );
   }
   lines.push("");
