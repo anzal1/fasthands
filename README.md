@@ -229,7 +229,7 @@ own palette buttons; verification is pixel-diff, never vision.
 |---|---|
 | ![engraving](demos/out-davinci.png) | **Mona Lisa, engraved.** 4,601 one-pixel strokes, tone from luminance-driven cross-hatch of the real painting. 100% stroke success. |
 | ![ink sketch](demos/out-drawing.png) | **Mona Lisa, sketched like a hand.** 2,400 curved strokes traced along the painting's own gradient field, contours first, then tone. |
-| ![color](demos/out-painting.png) | **In color, through the app's UI.** 3,026 strokes across 52 palette layers; the agent clicked swatch and brush buttons 55 times. |
+| ![color](demos/out-monalisa-color.png) | **In color, through the app's UI.** 3,026 strokes across 52 palette layers; the agent clicked swatch and brush buttons 55 times. |
 | ![starry night](demos/out-starrynight-v2.png) | **Starry Night.** The flow-field tracer follows van Gogh's own brush directions; primed canvas, 78% coverage. |
 | ![icon](demos/out-icon.png) | **The plotter rule.** Brush-drawn on excalidraw.com: parametric circles, exact bolt polygon, zero artificial jitter. Excalidraw's pen supplies the human character. |
 | ![comic](demos/out-comic.gif) | **Scribbly on purpose.** 8-frame stop-motion comic: seeded sketch passes give boiling lines; frames cleared via the app's own button. |
